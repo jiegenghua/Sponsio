@@ -826,9 +826,14 @@ function warnOnceAboutSkipped(skipped: SkippedItem[]): void {
     bits.push(`${unknown} unrecognised contract entr${unknown === 1 ? "y" : "ies"}`);
   }
 
+  const stoNote =
+    sto > 0
+      ? " Sto (LLM-judge) contracts are part of Sponsio Cloud — install `sponsio[cloud]` for the managed pipeline."
+      : "";
   console.warn(
     "[sponsio] skipped unsupported yaml items: " +
       bits.join("; ") +
-      ". These features are Python-only today; TS runtime will ship them in a future release.",
+      "." +
+      stoNote,
   );
 }
