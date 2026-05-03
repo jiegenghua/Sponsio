@@ -1,0 +1,138 @@
+[build-system]
+requires = ["setuptools>=77.0", "packaging>=24.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sponsio"
+version = "0.1.0a3"
+description = "Runtime contract enforcement for LLM agent systems"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [
+    {name = "Sponsio Contributors"},
+]
+keywords = [
+    "llm",
+    "agents",
+    "safety",
+    "contracts",
+    "ltl",
+    "runtime-verification",
+    "langgraph",
+    "mcp",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = ["click>=8.0", "rich>=13.0"]
+
+[project.scripts]
+sponsio = "sponsio.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SponsioLabs/Sponsio"
+Repository = "https://github.com/SponsioLabs/Sponsio"
+Issues = "https://github.com/SponsioLabs/Sponsio/issues"
+
+[project.optional-dependencies]
+langgraph = ["langgraph", "langchain-core"]
+# openai: OpenAI + any OpenAI-compatible --base-url; google-genai: Gemini
+# (``from google import genai``); anthropic: Claude path for scan --llm
+llm = ["openai>=1.0", "google-genai", "anthropic"]
+crewai = ["crewai"]
+agents = ["openai-agents"]
+agents-sdk = ["openai-agents"]
+claude-agent = ["claude-agent-sdk"]
+google-adk = ["google-adk"]
+vercel-ai = ["vercel-ai-sdk"]
+web = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "python-multipart>=0.0.6"]
+config = ["pyyaml>=6.0"]
+pdf = ["pdfplumber>=0.10"]
+calibration = ["scikit-learn>=1.3"]
+otel = [
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.20",
+]
+all = [
+    "langgraph", "langchain-core",
+    "openai>=1.0",
+    "google-genai",
+    "anthropic",
+    "crewai",
+    "openai-agents",
+    "claude-agent-sdk",
+    "google-adk",
+    "vercel-ai-sdk",
+    "fastapi>=0.100", "uvicorn[standard]>=0.20", "python-multipart>=0.0.6",
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.20",
+    "pyyaml>=6.0",
+    "pdfplumber>=0.10",
+    "scikit-learn>=1.3",
+]
+
+[tool.setuptools.packages.find]
+include = ["sponsio*"]
+
+[tool.setuptools.package-data]
+sponsio = [
+    "py.typed",
+    # Bundled scaffolding for `sponsio init --with-example`.
+    # Mirror of `examples/eval/` (kept in sync by
+    # `scripts/sync_init_examples.py` + `tests/test_init_examples_sync.py`).
+    "init_examples/eval/*",
+    "init_examples/eval/traces/*",
+    # Built-in contract packs resolvable via `include: [sponsio:<spec>]`
+    # — see `sponsio.config._resolve_include_spec`.  Layout is
+    # ``contracts/<category>/<name>.yaml`` (core / capability / incident).
+    "contracts/*/*.yaml",
+    # Plugin default per-plugin libraries — copied by `sponsio plugin init`
+    # into ``~/.sponsio/plugins/<plugin>/sponsio.yaml``.  These are full
+    # agent configs (not pack templates with ``*`` placeholders) — see
+    # ``sponsio.plugin``.  Mirrored under ``plugins/sponsio-claude-code/libraries/``
+    # for source-checkout users; ``tests/test_plugin_defaults_sync.py``
+    # keeps the two trees identical.
+    "plugin/defaults/*.yaml",
+    # Pre-built sponsio-openclaw plugin — bundled so
+    # ``sponsio host install openclaw`` can deploy the OpenClaw
+    # extension without requiring node/npm/tsc on the user's
+    # machine.  Canonical source: ``plugins/sponsio-openclaw/`` in
+    # the repo; ``scripts/sync_openclaw_artifact.py`` mirrors the
+    # built artifact here, and ``tests/test_openclaw_artifact_sync.py``
+    # fails the build if the two trees drift.
+    "plugin/openclaw_artifact/*.json",
+    "plugin/openclaw_artifact/*.md",
+    "plugin/openclaw_artifact/dist/*.js",
+    "plugin/openclaw_artifact/dist/*.d.ts",
+    # Contract-extraction prompt templates (one per target host).
+    # ``sponsio plugin prompt <host>`` reads these and prints them so
+    # the host agent driving ``sponsio plugin scan --introspect`` can
+    # reason over the tool inventory using its own LLM context — no
+    # separate API call needed from the CLI.
+    "plugin/prompts/*.md",
+    # Workflow prompt templates (onboard / refresh).  ``sponsio prompt
+    # <flow>`` prints these for the host agent driving the ``sponsio``
+    # skill — pair with ``sponsio onboard --emit-context`` or
+    # ``sponsio refresh --emit-traces``.
+    "prompts/*.md",
+    # Agent Skills (Cursor / Claude Code / Codex).  Bundled so
+    # ``sponsio skill install`` can locate the canonical source after
+    # a pip install — see `sponsio.cli::skill_install`.  Keep the nested
+    # ``skills/<skill-name>/`` layout so multiple skills can ship side
+    # by side without path collision.
+    "skills/*/SKILL.md",
+    "skills/*/*.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

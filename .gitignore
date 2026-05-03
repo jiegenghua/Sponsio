@@ -1,0 +1,86 @@
+# OS/editor noise
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg-info
+dist/
+# But track the prebuilt OpenClaw plugin artifact bundled with the wheel
+# (canonical source: plugins/sponsio-openclaw/, mirrored here by
+# scripts/sync_openclaw_artifact.py — guarded by tests/test_openclaw_artifact_sync.py).
+!sponsio/plugin/openclaw_artifact/dist/
+!sponsio/plugin/openclaw_artifact/dist/**
+build/
+.eggs/
+*.so
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local scan output — `sponsio scan` writes ./sponsio.yaml by default;
+# real configs live next to integrating projects, not in this repo.
+/sponsio.yaml
+
+# Root-level npm noise (e.g. mistaken `npm install` in repo root)
+/node_modules/
+
+# Local environments and secrets
+*.env
+.env
+.env.*
+.venv/
+.venv-*/
+venv/
+
+# Project-scope Cursor hooks dropped in by ``sponsio host install
+# cursor --scope project`` while running the freeze_cursor demo.
+# They're a per-developer install artifact, not a checked-in config.
+.cursor/
+
+# Frontend build outputs
+ts/node_modules/
+ts/packages/*/node_modules/
+ts/packages/*/dist/
+# Stray top-level ``ts-sdk/`` / ``ts-scanner/`` were the pre-monorepo
+# layout — both source and dist lived directly under the repo root.
+# They've since been migrated into the ``ts/packages/`` workspace,
+# but a misfired ``tsc -p ...`` from an old shell history can still
+# recreate the directories with stale node_modules + dist content.
+# Pre-emptively ignore so they never sneak back into git status.
+ts-sdk/
+ts-scanner/
+plugins/sponsio-openclaw/node_modules/
+plugins/sponsio-openclaw/dist/
+web-reference/
+
+# Local scratch/workspace copies
+claude_cowork/
+twitter-scout/
+
+# Runtime data — entire directory is local-only (scores, WAL, etc.).
+# Only `data/README.md` is tracked so clones know not to commit DB files.
+data/*
+!data/README.md
+
+# Internal docs — do not push to GitHub
+agent_docs/
+internal/
+docs/internal/
+PLAN.md
+STATUS.md
+LAUNCH_HANDOFF.md
+LAUNCH_PLAN.md
+docs/demo-video-script.md
+# Full benchmark write-ups / model-by-model tables — private; do not force-add
+docs/benchmark-results.md
+examples/scan_test_agent_run_debug.py
+sponsio-code-review.md
+
+# Claude Code
+.claude/

@@ -1,0 +1,79 @@
+# Changelog
+
+All notable changes to this project are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Granular per-release notes (commits, PRs, individual fix lines) live in
+[GitHub Releases](https://github.com/SponsioLabs/Sponsio/releases). This
+file keeps the high-level shape: what was added, what changed, what
+broke.
+
+---
+
+## [Unreleased]
+
+_Nothing yet._
+
+---
+
+## [0.1.0a3] — 2026-05-02
+
+Pre-launch test build. Sponsio is a runtime contract enforcement layer
+for AI agents: deterministic LTL contracts evaluated as a compiled DFA
+on every tool call, with framework adapters for the common agent stacks
+and a CLI for scanning, mining, and reporting.
+
+### Added
+
+- **Runtime engine** — LTL → DFA compiler, finite-trace evaluator,
+  observe / enforce modes, session log writer, OTel exporter.
+- **Pattern library** — 29 deterministic patterns (`must_precede`,
+  `rate_limit`, `idempotent`, `arg_blacklist`, `arg_allowlist`,
+  `no_data_leak`, `segregation_of_duty`, `cooldown`, `must_confirm`,
+  `bounded_retry`, `loop_detection`, `scope_limit`,
+  `arg_length_limit`, `data_intact`, `destructive_action_gate`, etc.)
+  exposed both as Python factories and as natural-language triggers.
+- **Contract bundles** — `sponsio:core/runaway`, `sponsio:core/universal`,
+  `sponsio:capability/shell`, `sponsio:capability/filesystem`,
+  `sponsio:incident/openclaw`, plus benchmark packs
+  (`sponsio:benchmark/redcode_exec`, `sponsio:benchmark/odcv_bench`).
+- **Framework integrations** — LangGraph / LangChain.js, Claude Agent
+  SDK, OpenAI SDK, OpenAI Agents SDK, Google ADK, Vercel AI SDK,
+  CrewAI, MCP, plus a no-framework `guard_before` / `guard_after` API.
+- **CLI** — `sponsio onboard`, `scan`, `validate`, `check`, `report`,
+  `refresh`, `eval`, `export`, `export-sessions`, `host`, `plugin`,
+  `packs`, `patterns`, `prompt`, `mode`, `doctor`, `skill`, `replay`,
+  `explain`, `demo`.
+- **TypeScript SDK** (`@sponsio/sdk`) — deterministic engine + the
+  same set of framework integrations.
+- **Static scanner** (`@sponsio/scan-ts`) — AST-based code scanner
+  for proposing contracts from a TS / JS codebase.
+- **Local observability** — session log JSONL writer,
+  `sponsio host trace --follow` live stream, `sponsio report` rich /
+  markdown / HTML / JSON output, OTel HTTP exporter for shipping to
+  your own collector.
+- **Plugins** — Claude Code plugin (production), OpenClaw plugin
+  (beta — type definitions track the public OpenClaw plugin docs;
+  end-to-end exercise inside a live OpenClaw runtime is in progress).
+- **Benchmarks** — ODCV-Bench (84.5% high-risk protection across 12
+  LLMs) and RedCode-Exec (92% combined detection across 1,410 cases),
+  with 0% utility FP on the 60-file clean-code audit. See
+  [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+
+### Boundary
+
+Sponsio Cloud is a separate commercial product layer; the
+[OSS / Cloud boundary](docs/oss_scope.md) is documented and committed.
+The OSS engine ships everything above; the managed sto pipeline,
+cross-customer pattern intelligence, hosted dashboard, and
+multi-tenant retention live in `sponsio[cloud]`. The OSS monitor
+log-and-skips sto contracts with a one-time warning so libraries that
+mix det + sto load cleanly under either install.
+
+### Notes
+
+- Status: alpha. APIs may shift before 1.0; the trace event schema
+  and CLI surface follow [SemVer](https://semver.org/) for breaking
+  changes from 0.2 onward.
+- Apache 2.0 — see [LICENSE](LICENSE) and the
+  [OSS Promise](docs/oss_scope.md#versioning--the-oss-promise).

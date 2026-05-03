@@ -1,0 +1,170 @@
+# =============================================================================
+# Sample contract library for Claude Code's built-in (host) tools.
+#
+# The sponsio-claude-code plugin routes any tool call whose name is
+# one of Claude Code's first-party tools (Bash, Edit, Write, Read, …)
+# into this library. Plugin-provided tools (`my-plugin:hello`,
+# `mcp__server__tool`) get their own per-plugin libraries under
+# ../<plugin-id>/sponsio.yaml.
+#
+# After installing the sponsio-claude-code plugin, copy this file (and
+# any sibling per-plugin libraries) into ``~/.sponsio/plugins/_host/``
+# to activate.  Override individual rules with ``overrides:``.
+#
+# Note on tool names + params:
+#   The shared `sponsio:capability/filesystem` pack uses canonical names
+#   (read/write/edit, param=path), but Claude Code's actual tool surface
+#   uses Bash / Read / Write / Edit / MultiEdit with param=file_path.
+#   `tool_rename:` remaps tool names but not param names, so
+#   filesystem-side rules are written directly here against the real
+#   Claude Code shape rather than via include.
+# =============================================================================
+
+version: "1"
+
+agents:
+  _host:
+    # Reuse the shell-capability pack against Bash. This covers
+    # rm -rf /, fork bombs, curl|bash, reverse-shell primitives,
+    # line-continuation evasion, etc.  ``credentials`` covers
+    # secret-shape payloads in Write.content / Edit.new_string —
+    # rename canonical ``write`` / ``edit`` / ``apply_patch`` to
+    # Claude Code's actual tool surface.
+    tool_rename:
+      exec: Bash
+      write: Write
+      edit: Edit
+      apply_patch: MultiEdit
+
+    include:
+      - sponsio:capability/shell
+      - sponsio:capability/database
+      - sponsio:capability/credentials
+      - sponsio:incident/claude-code-secret-bypass
+      # Self-modification protection — block agent-mediated edits to
+      # ``~/.sponsio/plugins/_host/sponsio.yaml`` so the agent under
+      # guard cannot weaken or disable the rule about to fire.  The
+      # pack only locks the agent's OWN file; managing sub-agent or
+      # per-plugin libraries stays open (legitimate parental control).
+      - sponsio:capability/self-modify
+
+    contracts:
+      # ---------- Sensitive-file blocks for Write / Edit / MultiEdit ----------
+      # Mirrors the `sponsio:capability/filesystem` deny patterns but
+      # uses Claude Code's actual `file_path` arg.
+      - desc: "Block writes to dotenv / secrets / SSH keys / cloud creds"
+        E:
+          pattern: arg_blacklist
+          args:
+            - Write
+            - file_path
+            - - "(^|/)\\.ssh/"
+              - "(^|/)\\.aws/credentials"
+              - "(^|/)\\.aws/config"
+              - "(^|/)\\.env(\\.(?!example$|sample$|template$|dist$)[\\w.-]+)?$"
+              - "(^|/)\\.netrc"
+              - "(^|/)\\.pgpass"
+              - "(^|/)\\.kube/config"
+              - "(^|/)\\.docker/config\\.json"
+              - "(^|/)\\.gnupg/"
+              - "^/etc/shadow($|/)"
+              - "^/etc/sudoers($|\\.d/|$)"
+              - "^/etc/ssh/ssh_host_"
+              - "^/etc/ssl/private/"
+              - "(^|/)Library/Keychains/"
+              - "(^|/)Library/LaunchAgents/"
+
+      - desc: "Block edits to dotenv / secrets / SSH keys / cloud creds"
+        E:
+          pattern: arg_blacklist
+          args:
+            - Edit
+            - file_path
+            - - "(^|/)\\.ssh/"
+              - "(^|/)\\.aws/credentials"
+              - "(^|/)\\.aws/config"
+              - "(^|/)\\.env(\\.(?!example$|sample$|template$|dist$)[\\w.-]+)?$"
+              - "(^|/)\\.netrc"
+              - "(^|/)\\.pgpass"
+              - "(^|/)\\.kube/config"
+              - "(^|/)\\.docker/config\\.json"
+              - "(^|/)\\.gnupg/"
+              - "^/etc/shadow($|/)"
+              - "^/etc/sudoers($|\\.d/|$)"
+              - "(^|/)Library/Keychains/"
+
+      - desc: "Block multi-file edits to dotenv / secrets / SSH keys / cloud creds"
+        E:
+          pattern: arg_blacklist
+          args:
+            - MultiEdit
+            - file_path
+            - - "(^|/)\\.ssh/"
+              - "(^|/)\\.aws/credentials"
+              - "(^|/)\\.aws/config"
+              - "(^|/)\\.env(\\.(?!example$|sample$|template$|dist$)[\\w.-]+)?$"
+              - "(^|/)\\.netrc"
+              - "(^|/)\\.pgpass"
+              - "(^|/)\\.kube/config"
+              - "(^|/)\\.docker/config\\.json"
+              - "(^|/)\\.gnupg/"
+              - "^/etc/shadow($|/)"
+              - "^/etc/sudoers($|\\.d/|$)"
+              - "(^|/)Library/Keychains/"
+
+      # ---------- Self-modify: close the Bash bypass ----------
+      # ``sponsio:capability/self-modify`` (included above) blocks
+      # Edit / Write / MultiEdit on ``~/.sponsio/plugins/_host/sponsio.yaml``.
+      # That leaves Bash open: ``echo … >`` / ``sed -i`` / ``tee`` /
+      # ``cp`` / ``mv`` / ``rm`` against the same path achieve the
+      # same self-rewrite.  This rule closes that path.
+      #
+      # Scoped narrowly to *write-shaped operators* on the agent's
+      # OWN host config.  Crucially this lets the canonical add
+      # path stay open:
+      #
+      #   sponsio plugin scan -o ~/.sponsio/plugins/_host/sponsio.yaml
+      #
+      # `sponsio plugin scan` writes the file via its own Python
+      # code (atomic, validated, additive merge) and the Bash
+      # invocation that triggers it has no `>` / `sed -i` / `tee`
+      # operator on its command line — so it doesn't match.  Direct
+      # shell-level overwrites and removes are the only thing this
+      # rule denies.
+      #
+      # Sibling slots (``_host_subagent``, ``_host_openclaw``,
+      # ``<plugin-id>``) stay editable so the host can manage
+      # children's policy.
+      - desc: "Block Bash write-shaped operators on own sponsio guard config"
+        E:
+          pattern: arg_blacklist
+          args:
+            - Bash
+            - command
+            - - ">\\s*[^|&;]*\\.sponsio/plugins/_host/sponsio\\.yaml"
+              - ">>\\s*[^|&;]*\\.sponsio/plugins/_host/sponsio\\.yaml"
+              - "tee\\s+[^|&;]*\\.sponsio/plugins/_host/sponsio\\.yaml"
+              - "sed\\s+-i\\b[^|&;]*\\.sponsio/plugins/_host/sponsio\\.yaml"
+              - "(cp|mv|rm|dd)\\s+[^|&;]*\\.sponsio/plugins/_host/sponsio\\.yaml"
+
+      # ---------- Read protections for credentials exfiltration ----------
+      - desc: "Block reads of SSH keys / cloud creds / dotenv secrets / keychains"
+        E:
+          pattern: arg_blacklist
+          args:
+            - Read
+            - file_path
+            - - "(^|/)\\.ssh/"
+              - "(^|/)\\.aws/credentials"
+              - "(^|/)\\.aws/config"
+              - "(^|/)\\.env(\\.(?!example$|sample$|template$|dist$)[\\w.-]+)?$"
+              - "(^|/)\\.netrc"
+              - "(^|/)\\.pgpass"
+              - "(^|/)\\.kube/config"
+              - "(^|/)\\.docker/config\\.json"
+              - "(^|/)\\.gnupg/"
+              - "^/etc/shadow($|/)"
+              - "^/etc/ssh/ssh_host_"
+              - "^/etc/ssl/private/"
+              - "(^|/)Library/Keychains/"
+              - "(^|/)Library/Cookies/"
