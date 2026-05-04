@@ -3874,6 +3874,74 @@ def doctor(path: Path, llm: bool, as_json: bool):
 # ---------------------------------------------------------------------------
 
 
+def _parse_existing_contracts(yaml_path: Path, agent_id: str) -> list[dict]:
+    """Extract the on-disk yaml's contracts so ``--emit-context``
+    consumers can dedupe their semantic-pass proposals.
+
+    Pulls only the fields a deduper actually needs (pattern, args,
+    source) and only from the named agent's block.  Conservative:
+    on any parse error, returns an empty list — a malformed yaml
+    will still surface elsewhere (doctor, validate), no need to
+    block the diagnostic JSON over it.
+
+    Each returned dict has the shape::
+
+        {"pattern": "arg_blacklist",
+         "args": ["delete_snapshot", "path", ["...", "..."]],
+         "source": "scan" | "library:tier1.shell" | "agent-extracted" | ...}
+
+    Pack-included rules (resolved via ``include:``) are NOT walked
+    here — the host agent only needs to dedupe against rules
+    actually written into THIS yaml (the inline ``contracts:``
+    block).  Pack rules round-trip through ``include:`` and the
+    template's "don't inline what the pack already covers" rule
+    keeps them out of the agent's proposals.
+    """
+    try:
+        import yaml as _yaml
+    except ImportError:
+        return []
+
+    try:
+        text = yaml_path.read_text(encoding="utf-8")
+        data = _yaml.safe_load(text)
+    except Exception:
+        return []
+
+    if not isinstance(data, dict):
+        return []
+    agents = data.get("agents")
+    if not isinstance(agents, dict):
+        return []
+    agent_block = agents.get(agent_id)
+    if not isinstance(agent_block, dict):
+        return []
+    contracts = agent_block.get("contracts")
+    if not isinstance(contracts, list):
+        return []
+
+    out: list[dict] = []
+    for c in contracts:
+        if not isinstance(c, dict):
+            continue
+        # Contracts can be written ``- E: {...}`` or ``- A: {...}, E: {...}``.
+        # We pull from whichever has the pattern.
+        body = c.get("E") if isinstance(c.get("E"), dict) else c
+        if not isinstance(body, dict):
+            continue
+        pattern = body.get("pattern")
+        if not isinstance(pattern, str):
+            continue
+        out.append(
+            {
+                "pattern": pattern,
+                "args": body.get("args") or [],
+                "source": body.get("source") or c.get("source") or "",
+            }
+        )
+    return out
+
+
 @cli.command()
 @click.argument(
     "target",
@@ -4214,9 +4282,58 @@ def onboard(
         except Exception:  # pragma: no cover — best-effort
             entry_file_candidates = []
 
+        # Parse the on-disk sponsio.yaml's contracts (if any) so the
+        # host agent driving this can dedupe its semantic-pass
+        # proposals without having to re-grep YAML.  Conservative
+        # parse — failures degrade to an empty list rather than
+        # blocking the emit (a malformed yaml is worth surfacing,
+        # but not at the cost of also blocking the rest of the
+        # diagnostic JSON).
+        pre_existing_contracts: list[dict] = []
+        if existing_yaml_path.exists():
+            pre_existing_contracts = _parse_existing_contracts(
+                existing_yaml_path, agent_id
+            )
+
+        # Health flag — the host agent uses this as the single
+        # gate for "should I keep going or stop and ask?".
+        # Reflects three orthogonal failure modes the previous
+        # case-A/B/C check in the wizard prompt was hand-rolling.
+        if framework.framework != "none" and tool_inventory:
+            health = "ok"
+            health_detail = "framework + tools detected"
+        elif tool_inventory:
+            # Rare after the prioritize-files fix, but still possible
+            # for unusual import shapes (star imports, dynamic
+            # `__import__`, etc.) — surface explicitly so the agent
+            # asks the user to pick from axis 1 manually.
+            health = "tools_only"
+            health_detail = (
+                "tool_inventory found tools but no framework import "
+                "matched any known signature — pick framework manually"
+            )
+        elif framework.framework != "none":
+            health = "tools_only"
+            health_detail = (
+                f"framework {framework.framework!r} detected but "
+                "tool_inventory is empty — agent likely uses external "
+                "SDK tools (MCP, prebuilt LangChain tools, OpenAI "
+                "JSON schemas); grep the repo for tool registration"
+            )
+        else:
+            health = "empty"
+            health_detail = (
+                "no framework, no tools — wrong scan path "
+                "(monorepo + agent in subdir), or this is a bare "
+                "function-calling loop, or the project is TS and "
+                "you ran the Python probe"
+            )
+
         click.echo(
             json.dumps(
                 {
+                    "health": health,
+                    "health_detail": health_detail,
                     "framework": {
                         "name": framework.framework,
                         "evidence": framework.evidence,
@@ -4226,6 +4343,7 @@ def onboard(
                     "auto_selected_packs": list(pack_selection.packs),
                     "needs_workspace": pack_selection.needs_workspace,
                     "existing_yaml": existing_yaml_text,
+                    "pre_existing_contracts": pre_existing_contracts,
                     "policy_docs": policy_docs,
                     "wrap_snippet": wrap_snippet_text,
                     "entry_file_candidates": entry_file_candidates,

@@ -659,6 +659,112 @@ class TestOnboardCli:
         assert "import sponsio\nguard = sponsio.Sponsio" not in result.output
 
 
+class TestEmitContextHealthAndPreExisting:
+    """``--emit-context`` adds ``health`` + ``pre_existing_contracts``
+    so the host agent driving onboarding can dedupe its semantic-pass
+    proposals + decide "stop and ask vs proceed" without re-grepping
+    yaml or hand-rolling a Case A/B/C check in the wizard prompt.
+    """
+
+    def _emit(self, project: Path) -> dict:
+        import json
+
+        runner = CliRunner()
+        result = runner.invoke(
+            onboard,
+            [str(project), "--no-probe-ollama", "--emit-context"],
+        )
+        assert result.exit_code == 0, result.output
+        return json.loads(result.output)
+
+    def test_health_ok_when_framework_and_tools_detected(
+        self, tmp_path: Path, clean_provider_env
+    ):
+        project = _make_fixture_project(tmp_path)
+        data = self._emit(project)
+        assert data["health"] == "ok"
+        assert data["framework"]["name"] == "langgraph"
+        assert data["tool_inventory"]
+        assert "framework + tools" in data["health_detail"]
+
+    def test_health_empty_on_blank_repo(self, tmp_path: Path, clean_provider_env):
+        # No framework imports, no @tool decorators, no policy doc.
+        # The wizard prompt's case C path: stop and ask the user
+        # what's actually here.
+        (tmp_path / "agent.py").write_text("def foo(): pass\n")
+        data = self._emit(tmp_path)
+        assert data["health"] == "empty"
+        assert data["framework"]["name"] == "none"
+        assert data["tool_inventory"] == []
+
+    def test_health_tools_only_when_framework_detected_but_no_tools(
+        self, tmp_path: Path, clean_provider_env
+    ):
+        # Framework import present but no tool decorators — the
+        # "tools come from external SDK" case (MCP, prebuilt tools,
+        # OpenAI JSON schemas).  Wizard tells the agent to grep
+        # tool registration manually.
+        (tmp_path / "agent.py").write_text(
+            "from langgraph.prebuilt import create_react_agent\n"
+            "agent = create_react_agent(model, [])\n"
+        )
+        data = self._emit(tmp_path)
+        assert data["health"] == "tools_only"
+        assert data["framework"]["name"] == "langgraph"
+        assert data["tool_inventory"] == []
+
+    def test_pre_existing_contracts_parsed_from_on_disk_yaml(
+        self, tmp_path: Path, clean_provider_env
+    ):
+        project = _make_fixture_project(tmp_path)
+        # Simulate a prior onboard run that wrote some contracts.
+        (project / "sponsio.yaml").write_text(
+            "version: '1'\n"
+            "agents:\n"
+            "  agent:\n"
+            "    contracts:\n"
+            "      - E:\n"
+            "          pattern: idempotent\n"
+            "          args: [delete_user]\n"
+            "          source: scan\n"
+            "      - E:\n"
+            "          pattern: rate_limit\n"
+            "          args: [send_email, 5]\n"
+            "          source: agent-extracted\n"
+        )
+        data = self._emit(project)
+        contracts = data["pre_existing_contracts"]
+        assert len(contracts) == 2
+        patterns = {c["pattern"] for c in contracts}
+        assert patterns == {"idempotent", "rate_limit"}
+        # Source survives the parse so dedupe can tell starter rules
+        # (`source: scan`) apart from agent additions
+        # (`source: agent-extracted`).
+        sources = {c["source"] for c in contracts}
+        assert sources == {"scan", "agent-extracted"}
+
+    def test_pre_existing_contracts_empty_when_no_yaml(
+        self, tmp_path: Path, clean_provider_env
+    ):
+        # First-time onboard — no sponsio.yaml on disk yet.
+        project = _make_fixture_project(tmp_path)
+        data = self._emit(project)
+        assert data["pre_existing_contracts"] == []
+
+    def test_pre_existing_contracts_robust_to_malformed_yaml(
+        self, tmp_path: Path, clean_provider_env
+    ):
+        # A malformed yaml shouldn't block the diagnostic JSON —
+        # doctor/validate will flag the parse error elsewhere.
+        project = _make_fixture_project(tmp_path)
+        (project / "sponsio.yaml").write_text(
+            "agents:\n  agent:\n    contracts: [oops"
+        )
+        data = self._emit(project)
+        assert data["pre_existing_contracts"] == []
+        assert data["health"] == "ok"  # detection still runs
+
+
 # ---------------------------------------------------------------------------
 # Miscellaneous helpers
 # ---------------------------------------------------------------------------
