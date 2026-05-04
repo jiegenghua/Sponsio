@@ -324,9 +324,18 @@ def plan_commands(
             cmds.append(
                 ["npm", "install", "--save-dev", "@sponsio/scan-ts"]
             )
-            cmds.append(
-                ["npx", "sponsio", "onboard", ".", "--mode", picks.mode, "--force"]
-            )
+            # Older published versions of ``@sponsio/scan-ts``
+            # (alpha.3 and below) didn't accept ``--mode`` on the
+            # ``onboard`` subcommand — passing it errored with
+            # ``unknown flag: --mode``.  Newer versions do support
+            # it, but we route around the older floor by writing
+            # the file at the default ``observe`` mode and then
+            # using the ``mode`` subcommand to flip if the user
+            # picked ``enforce``.  Cheap, idempotent, works on
+            # both old and new scanner versions.
+            cmds.append(["npx", "sponsio", "onboard", ".", "--force"])
+            if picks.mode != "observe":
+                cmds.append(["npx", "sponsio", "mode", picks.mode])
         else:
             cmds.append(
                 ["sponsio", "onboard", ".", "--mode", picks.mode, "--force"]

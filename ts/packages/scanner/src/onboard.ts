@@ -415,6 +415,20 @@ function parseOnboardArgs(argv: string[]): OnboardOptions & { help: boolean; emi
       out.pyNever = true;
     } else if (a === "--agent" || a === "-a") {
       out.agent = argv[++i] ?? "agent";
+    } else if (a === "--mode") {
+      // Parity with the Python CLI's ``sponsio onboard --mode``.
+      // ``sponsio init`` dispatches with ``--mode <observe|enforce>``
+      // for both Python and TS projects; without this branch the
+      // TS scanner errored with ``unknown flag: --mode`` and the
+      // wizard's apply step bailed mid-flight.
+      const v = argv[++i];
+      if (v !== "observe" && v !== "enforce") {
+        process.stderr.write(
+          `--mode must be 'observe' or 'enforce' (got: ${v ?? "<none>"})\n`,
+        );
+        process.exit(2);
+      }
+      out.mode = v;
     } else if (a === "--push") {
       out.push = true;
     } else if (a === "--no-push") {
