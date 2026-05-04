@@ -73,15 +73,16 @@ class TestSpinner:
             spin.stop()
         assert first_thread is second_thread, "second start spawned a new thread"
 
-    def test_trailing_ellipsis_replaced_with_spaced_dots(self):
+    def test_trailing_ellipsis_drives_animated_tail_dots_not_inline(self):
         # The CLI's progress sink uses a trailing ``…`` as the
-        # spinner-trigger sentinel.  Once we're rendering, the
-        # tightly-packed Unicode ellipsis pairs poorly with the
-        # rotating braille glyph at the front — replaced with
-        # ``. . .`` (spaced dots) so the trailing wait indicator
-        # reads as deliberate breathing room rather than cramped
-        # typographic afterthought.
-        buf = io.StringIO()  # non-tty path prints the label once
+        # spinner-trigger sentinel.  Once rendering, the dots are
+        # animated per-frame from ``_DOT_FRAMES`` alongside the
+        # rotating braille glyph (see ``_wait_dots`` flag), so the
+        # ``…`` shouldn't survive in the static label OR appear
+        # inline as spaces in the printed output.  The non-TTY
+        # fallback just prints the bare label since animation is
+        # meaningless in CI logs.
+        buf = io.StringIO()  # non-tty path prints label once, no dots
         with patch.object(sys, "stderr", buf):
             spin = Spinner()
             spin.start("· Running LLM inference …")
@@ -89,7 +90,25 @@ class TestSpinner:
         out = buf.getvalue()
         assert "Running LLM inference" in out
         assert "…" not in out
-        assert ". . ." in out
+
+    def test_animated_tail_dots_render_in_tty_mode(self):
+        # In TTY mode the worker thread cycles through
+        # ``_DOT_FRAMES`` so the line tail visibly animates.  We
+        # assert at least one cycled state lands in the buffer.
+        buf = _FakeTTYStream()
+        with patch.object(sys, "stderr", buf):
+            spin = Spinner()
+            spin.start("· Running LLM inference …")
+            import time
+
+            # Long enough to cross at least one ``_DOT_FRAMES``
+            # boundary (3 frames × 100ms = 300ms).
+            time.sleep(0.4)
+            spin.stop()
+        out = buf.getvalue()
+        # Some dot pattern from _DOT_FRAMES should have been emitted
+        # to the buffer during the spin loop.
+        assert ". . ." in out or ". ." in out
 
     def test_label_without_ellipsis_unchanged(self):
         # Defensive: a caller that didn't follow the ``…`` convention

@@ -62,6 +62,13 @@ class Spinner:
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._label = ""
+        # Whether the original label ended with the ``…`` sentinel —
+        # used by ``_run`` to decide if it should animate trailing
+        # dots alongside the rotating braille frame.  Two animated
+        # signals (head + tail) reads as deliberate "I'm working AND
+        # I'm waiting on something specific"; static dots paired
+        # with a moving glyph felt awkward.
+        self._wait_dots = False
 
     @staticmethod
     def stderr_is_tty() -> bool:
@@ -85,20 +92,17 @@ class Spinner:
         is a no-op — we don't try to swap labels mid-spin since that
         usually indicates a missing stop call upstream.
 
-        Replaces a trailing ``…`` (the CLI's spinner-trigger sentinel)
-        with three spaced dots ``. . .`` — the spaced form reads as
-        deliberate progress hint instead of typographic afterthought,
-        and pairs with the rotating braille glyph at the front of
-        the line for a balanced "spinning + waiting" indicator.
+        Strips a trailing ``…`` (the CLI's spinner-trigger sentinel)
+        and instead animates ``. . .`` at the line tail, one dot
+        accumulating per ~300ms (slower than the 100ms braille
+        rotation so the two animations don't compete).  Static dots
+        next to a moving glyph read as awkward; cycling dots match
+        the head-glyph's "I'm alive" cadence.
         """
-        # The trailing Unicode ellipsis is the convention upstream
-        # uses to flag "long-running, start a spinner".  Replace it
-        # with the spaced ``. . .`` form once we're rendering — the
-        # braille glyph is the primary "in progress" signal; the
-        # dots are secondary breathing room.
         label = label.rstrip()
-        if label.endswith("…"):
-            label = label[:-1].rstrip() + " . . ."
+        self._wait_dots = label.endswith("…")
+        if self._wait_dots:
+            label = label[:-1].rstrip()
 
         if not self.stderr_is_tty():
             print(label, file=sys.stderr, flush=True)
@@ -130,14 +134,24 @@ class Spinner:
         if final is not None:
             print(final, file=sys.stderr, flush=True)
 
+    # Trailing-dot cycle for the wait indicator.  Constant 5-char
+    # width so the right-edge of the line doesn't jitter as dots
+    # accumulate / reset.  Cycle period = 4 frames × _FRAME_INTERVAL
+    # = ~400ms — slower than the braille rotation so the two motions
+    # don't compete for attention.
+    _DOT_FRAMES: tuple[str, ...] = (".    ", ". .  ", ". . .", ".    ")
+
     def _run(self) -> None:
         i = 0
         while not self._stop_event.is_set():
             frame = _BRAILLE_FRAMES[i % len(_BRAILLE_FRAMES)]
+            tail = ""
+            if self._wait_dots:
+                tail = " " + self._DOT_FRAMES[(i // 3) % len(self._DOT_FRAMES)]
             # ``_LINE_RESET`` then frame + label — single fwrite so
             # the redraw is atomic from the terminal's POV (no
             # half-rendered glyph during a refresh).
-            sys.stderr.write(f"{_LINE_RESET}{frame} {self._label}")
+            sys.stderr.write(f"{_LINE_RESET}{frame} {self._label}{tail}")
             sys.stderr.flush()
             i += 1
             # ``Event.wait`` returns early when set, so a stop()
