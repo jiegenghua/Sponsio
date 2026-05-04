@@ -391,7 +391,7 @@ def offer_demo(*, runner=None) -> None:
     """
     if not sys.stdin.isatty():
         return
-    if not click.confirm(
+    if not _confirm(
         "Want to see Sponsio block one tool call? (~30s)",
         default=False,
     ):
@@ -449,15 +449,6 @@ def _print_panel_header(env: Environment) -> None:
     console.print()
 
 
-def _section(label: str) -> None:
-    from sponsio.render.components import section_rule
-    from sponsio.runtime.terminal import _make_stderr_console
-
-    console = _make_stderr_console(None)
-    console.print()
-    console.print(section_rule(label))
-
-
 def _select(prompt: str, choices: list, default=None):
     """Single-pick keyboard menu — questionary if available, else
     click.prompt with show_choices for graceful fallback.
@@ -495,6 +486,46 @@ def _select(prompt: str, choices: list, default=None):
     return answer
 
 
+def _confirm(prompt: str, default: bool = False) -> bool:
+    """Yes/no via questionary so the ``?`` prompt format matches every
+    other wizard question.  Falls back to ``click.confirm`` (the
+    ``[Y/n]`` form) when questionary is unavailable.
+
+    The mismatch users flagged was that ``? Sponsio level for X``
+    (questionary) and ``Run these? [Y/n]`` (click.confirm) felt like
+    two different programs — one keyboard-driven, one text-input.
+    Routing every prompt through this helper means the wizard speaks
+    one language top to bottom.
+    """
+    try:
+        import questionary
+    except ImportError:
+        return click.confirm(prompt, default=default)
+
+    answer = questionary.confirm(prompt, default=default).ask()
+    if answer is None:  # Ctrl-C
+        raise click.Abort()
+    return answer
+
+
+def _step(label: str) -> None:
+    """Section divider matching the runtime trace renderer.
+
+    Uses the same :func:`sponsio.render.components.section_rule` that
+    ``print_banner`` / ``sponsio doctor`` / ``sponsio explain`` use
+    for inside-zone dividers (``contracts armed (N) ──────...``), so
+    the wizard's axis headers, the dispatched ``sponsio onboard``'s
+    stage headers, and the live agent-run trace all read as the same
+    visual language.  No competing chevron / rule mix.
+    """
+    from sponsio.render.components import section_rule
+    from sponsio.runtime.terminal import _make_stderr_console
+
+    console = _make_stderr_console(None)
+    console.print()
+    console.print(section_rule(label))
+
+
 def run_interactive(env: Environment) -> InitPicks:
     """Walk three axes via keyboard-driven menus.
 
@@ -515,7 +546,7 @@ def run_interactive(env: Environment) -> InitPicks:
     _print_panel_header(env)
 
     # ---- Axis 1: framework wrap ----
-    _section("Framework wrap")
+    _step("Framework wrap")
     fw_choices = []
     for fw in SUPPORTED_FRAMEWORKS:
         suffix = "  ← detected" if fw == env.framework else ""
@@ -533,7 +564,7 @@ def run_interactive(env: Environment) -> InitPicks:
     # confusing overlap (axis 2 already drops the skill into picked
     # hosts).  ``full`` here is "host hooks + skill"; ``skill`` is
     # "SKILL.md only, no enforcement".
-    _section("Sponsio integration per IDE")
+    _step("Sponsio integration per IDE")
     click.echo(
         "none   — leave this IDE alone\n"
         "skill  — drop SKILL.md so the agent learns Sponsio "
@@ -559,13 +590,11 @@ def run_interactive(env: Environment) -> InitPicks:
     # codex` works.  Offer it as a separate skill-only question if the
     # binary's on PATH.
     if shutil.which("codex"):
-        if click.confirm(
-            "Drop Sponsio SKILL.md into Codex too?", default=False
-        ):
+        if _confirm("Drop Sponsio SKILL.md into Codex too?", default=False):
             ide_levels["codex"] = "skill"
 
     # ---- Axis 3: mode ----
-    _section("Mode for new contracts")
+    _step("Mode for new contracts")
     mode = _select(
         "Mode",
         ["observe", "enforce"],

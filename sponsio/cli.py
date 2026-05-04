@@ -3841,7 +3841,9 @@ def init(
     # agent already showed me the dry-run preview before invoking,
     # and a second confirmation here would corrupt structured output.
     if apply_spec is None:
-        if not click.confirm("Run these?", default=True):
+        from sponsio.init_wizard import _confirm as _wizard_confirm
+
+        if not _wizard_confirm("Run these?", default=True):
             click.echo("aborted")
             return
 
@@ -4177,20 +4179,31 @@ def onboard(
     _spinner = Spinner()
 
     def _progress(msg: str) -> None:
-        # ``▸`` prefix = stage section header (bold cyan, no ``· `` bullet
-        # and a leading blank line so it visually breaks up the long
-        # scan/LLM/pack/doctor stretches).  Anything else is a per-step
-        # progress line — dim cyan ``· `` bullet.  Emits ending with
-        # ``…`` are "this will take a while" announcements; we hand them
-        # to the spinner so the user sees motion during the wait.
+        # ``▸`` prefix = stage section header.  Render as a
+        # :func:`section_rule` (label + ``─────...`` rule) so the
+        # divider matches the runtime trace renderer + ``sponsio init``
+        # axis headers.  Anything else is a per-step progress line —
+        # dim cyan ``· `` bullet.  Emits ending with ``…`` are "this
+        # will take a while" announcements; we hand them to the
+        # spinner so the user sees motion during the wait.
         if as_json or emit_context:
             return
         # Always stop any running spinner first so the next line lands
         # cleanly (rather than on top of a stale frame).
         _spinner.stop()
         if msg.startswith("▸ "):
-            click.echo("", err=True)
-            click.secho(msg, fg="cyan", bold=True, err=True)
+            from sponsio.render.components import (
+                section_rule as _section_rule_for_progress,
+            )
+            from sponsio.runtime.terminal import (
+                _make_stderr_console as _make_console_for_progress,
+            )
+
+            _progress_console = _make_console_for_progress(None)
+            _progress_console.print()
+            _progress_console.print(
+                _section_rule_for_progress(msg.removeprefix("▸ "))
+            )
             return
         line = click.style("· ", fg="cyan", dim=True) + msg
         if msg.endswith("…"):
