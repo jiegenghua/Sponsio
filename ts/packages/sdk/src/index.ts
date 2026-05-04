@@ -364,6 +364,20 @@ export class Sponsio {
     for (const contract of this._contracts) {
       const checkSpan = new ContractCheckSpan(contract.desc, "hard");
       collector.push(checkSpan);
+      // Liveness obligations (``audit_after`` / ``deadline`` /
+      // ``required_steps_completion`` / ``always_followed_by``) cannot
+      // be discharged on a *prefix* of a finite trace — checking them
+      // mid-session would fire on every trigger before the obligated
+      // step has had a chance to run. Mirrors Python's
+      // ``RuntimeMonitor`` which skips ``liveness=True`` formulas
+      // during incremental checks and revisits them at session end
+      // (``finishSession``).
+      if (contract.liveness) {
+        const guaranteeSpan = new GuaranteeSpan(contract.desc, true);
+        collector.add(guaranteeSpan, "ok");
+        collector.pop("ok");
+        continue;
+      }
       const result = evaluate(contract.formula, this._trace);
       // The TS evaluator is currently a single-pass deterministic
       // check; it doesn't separately track assumption vs guarantee
@@ -487,6 +501,127 @@ export class Sponsio {
       consecutiveCounts: { ...this._state.consecutiveCounts },
       tokenCounts: { ...this._state.tokenCounts },
       delegationDepth: this._state.delegationDepth,
+      currentCtx: { ...this._state.currentCtx },
+      now: this._state.now,
+      lastTs: { ...this._state.lastTs },
+      trueAtPrev: new Set(this._state.trueAtPrev),
+    };
+  }
+
+  /**
+   * Push external facts into the grounding context. Mirrors Python's
+   * ``BaseGuard.observe_context`` — every subsequent event sees the
+   * keys as ``ctx(k, v)`` atoms, so contracts like
+   * ``ctx_required("wire", "caller_id", ["alice"])`` can fire.
+   *
+   * Emits a synthetic ``context_update`` event into the trace so
+   * patterns that anchor on the moment a fact was set (notably
+   * ``time_since(ctx(approval.role, alice))``) start their clock here.
+   */
+  observeContext(ctx: Record<string, unknown>): void {
+    const event: ToolEvent = {
+      tool: "",
+      event_type: "context_update",
+      args: ctx as Record<string, unknown>,
+    };
+    const valuation = groundEvent(event, this._state, this._contentAtoms);
+    this._trace.push(valuation);
+  }
+
+  /**
+   * Convenience helper for the approval-active gate: pushes
+   * ``approval.role`` / ``approval.decision`` (+ optional ``approver``
+   * / ``reason``) via ``observeContext``. Pairs with the
+   * ``approval_active`` pattern.
+   */
+  observeApproval(opts: {
+    role: string;
+    decision?: "allow" | "deny";
+    approver?: string;
+    reason?: string;
+  }): void {
+    const ctx: Record<string, string> = {
+      "approval.role": opts.role,
+      "approval.decision": opts.decision ?? "allow",
+    };
+    if (opts.approver) ctx["approval.approver"] = opts.approver;
+    if (opts.reason) ctx["approval.reason"] = opts.reason;
+    this.observeContext(ctx);
+  }
+
+  /**
+   * Record an LLM response into the trace. Drives ``max_length``,
+   * ``no_pii``, ``no_keywords`` (any pattern that grounds against
+   * ``llm_said`` / ``response_words`` / ``response_chars``). Mirrors
+   * the Python ``llm_response`` event path.
+   *
+   * Returns a ``CheckResult`` so callers can branch on observe-mode
+   * violations the same way they branch on ``guardBefore``. In
+   * enforce mode, ``blocked: true`` rolls back the synthetic event.
+   */
+  observeResponse(content: string, opts: { segment?: string } = {}): CheckResult {
+    const args: Record<string, unknown> = {};
+    if (opts.segment) args.segment = opts.segment;
+    const event: ToolEvent = {
+      tool: "",
+      event_type: "llm_response",
+      content,
+      args,
+    };
+    const snapshot = this._snapshotState();
+    const valuation = groundEvent(event, this._state, this._contentAtoms);
+    this._trace.push(valuation);
+
+    const violations: string[] = [];
+    const violatedDescs: string[] = [];
+    const detViolations: DetViolation[] = [];
+    for (const contract of this._contracts) {
+      const result = evaluate(contract.formula, this._trace);
+      if (!result) {
+        const verb = this.mode === "observe" ? "WOULD-BLOCK" : "BLOCKED";
+        const msg = `${verb}: ${this.agentId}.<llm_response> — det constraint violated: ${contract.desc}`;
+        violations.push(msg);
+        violatedDescs.push(contract.desc);
+        detViolations.push({
+          desc: contract.desc,
+          message: msg,
+          ruleId: contract.patternName || contract.desc,
+          agentMsg:
+            `LLM response was rejected by policy ` +
+            `(${contract.patternName || contract.desc}): ${contract.desc}.`,
+        });
+      }
+    }
+
+    const hasViolations = violations.length > 0;
+    const blocked = hasViolations && this.mode === "enforce";
+
+    if (blocked) {
+      this._trace.pop();
+      this._state = snapshot;
+      this._violations.push(...violations);
+      this._logViolations("<llm_response>", violations, violatedDescs, "blocked");
+      return {
+        blocked: true,
+        allowed: false,
+        message: violations[0],
+        violations,
+        detViolations,
+        stoViolations: [],
+      };
+    }
+
+    if (hasViolations) {
+      this._violations.push(...violations);
+      this._logViolations("<llm_response>", violations, violatedDescs, "observed");
+    }
+    return {
+      blocked: false,
+      allowed: true,
+      message: "",
+      violations: [],
+      detViolations,
+      stoViolations: [],
     };
   }
 
@@ -549,7 +684,9 @@ export class Sponsio {
   }
 
   /**
-   * Reset guard state for a new session.
+   * Reset guard state for a new session. Clears the trace, the
+   * grounding accumulators (including ``currentCtx``, ``lastTs``,
+   * event clock), the violation log, and the sto-context snapshot.
    */
   reset(): void {
     this._trace = [];

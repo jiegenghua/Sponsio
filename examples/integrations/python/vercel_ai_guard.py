@@ -28,7 +28,9 @@ CONTRACTS = [
     .assume("called `publish_post`")
     .guarantees("must call `review_content` before `publish_post`"),
     # Unconditional rate limit — no .assume(), only .guarantees()
-    contract("newsletter rate limit").guarantees("tool `send_newsletter` at most 1 times"),
+    contract("newsletter rate limit").guarantees(
+        "tool `send_newsletter` at most 1 times"
+    ),
 ]
 
 

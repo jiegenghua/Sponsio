@@ -19,6 +19,9 @@ import {
   argBlacklist,
   cooldown,
   deadline,
+  maxLength,
+  noPii,
+  noKeywords,
 } from "./patterns.js";
 import { Atom } from "./formula.js";
 
@@ -123,7 +126,77 @@ function parseBareCalledAtom(text: string, tools: string[]): DetFormula | null {
   return null;
 }
 
+// Response-content NL patterns — matched BEFORE the generic keyword
+// rules so length / PII / no-keyword constraints route to the
+// response-content det pipeline. Mirrors Python's
+// ``_try_response_content_patterns``.
+const LENGTH_PATTERN = /(?:response|output)\s+(?:must\s+be\s+)?(?:under|at\s+most|no\s+more\s+than|fewer\s+than|max(?:imum)?)\s+(\d+)\s+(words?|characters?|chars?)/i;
+const NO_PII_PATTERN = /(?:response|output).*(?:must|should)\s+not\s+contain\s+(?:any\s+)?(pii|personal\s+info(?:rmation)?|ssns?|credit[\s-]?cards?|emails?(?:\s+address(?:es)?)?|phones?(?:\s+numbers?)?)/i;
+const NO_KEYWORD_PATTERN = /(?:response|output)\s+(?:must|should)\s+not\s+(?:contain|include|mention)\s+(?:the\s+)?(?:words?|keywords?|terms?|phrase)\s+[`"']?([^`"']+)[`"']?/i;
+
+const PII_KEYWORD_TO_FIELDS: Record<string, string[]> = {
+  ssn: ["ssn"],
+  ssns: ["ssn"],
+  "credit card": ["credit_card"],
+  "credit cards": ["credit_card"],
+  "credit-card": ["credit_card"],
+  "credit-cards": ["credit_card"],
+  email: ["email"],
+  emails: ["email"],
+  "email address": ["email"],
+  "email addresses": ["email"],
+  phone: ["phone"],
+  phones: ["phone"],
+  "phone number": ["phone"],
+  "phone numbers": ["phone"],
+};
+
+function tryResponseContent(text: string): DetFormula | null {
+  // max_length
+  let m = text.match(LENGTH_PATTERN);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const unit = m[2].toLowerCase();
+    try {
+      if (unit.includes("char")) return maxLength({ maxChars: n, desc: text });
+      return maxLength({ maxWords: n, desc: text });
+    } catch {
+      return null;
+    }
+  }
+  // no_pii — narrow to specific category if mentioned, else full union.
+  m = text.match(NO_PII_PATTERN);
+  if (m) {
+    const raw = m[1].toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ").trim();
+    const fields = PII_KEYWORD_TO_FIELDS[raw];
+    try {
+      return noPii(fields);
+    } catch {
+      return null;
+    }
+  }
+  // no_keywords
+  m = text.match(NO_KEYWORD_PATTERN);
+  if (m) {
+    const raw = m[1].trim().replace(/\.$/, "");
+    const words = raw.split(/[,\s]+/).map((w) => w.trim()).filter((w) => w.length > 0);
+    if (words.length === 0) return null;
+    try {
+      return noKeywords(words);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export function parseNl(text: string): DetFormula | null {
+  // P2 response-content patterns first — keep them ahead of the
+  // generic keyword cascade so "response must not contain emails"
+  // doesn't get swallowed by something more general.
+  const respFormula = tryResponseContent(text);
+  if (respFormula) return respFormula;
+
   const lower = text.toLowerCase();
   const tools = extractTools(text);
 

@@ -54,6 +54,14 @@ import {
   tokenBudget,
   argValueRange,
   delegationDepthLimit,
+  maxLength,
+  noPii,
+  noKeywords,
+  ctxRequired,
+  ctxMatchesRequired,
+  timeSince,
+  approvalActive,
+  neverTogether,
   type DetFormula,
   type AssumeGuaranteePair,
 } from "./patterns.js";
@@ -344,6 +352,62 @@ export function buildPatternByName(
     case "delegation_depth_limit":
       return delegationDepthLimit(asNum(needArg(args, 0, "max_depth"), "max_depth"));
 
+    // Layer 3 — response content
+    case "max_length": {
+      // Python signature: max_length(max_words=None, max_chars=None, desc="")
+      // YAML positional: [max_words, max_chars] (either may be null/missing).
+      const maxWords = args.length >= 1 && args[0] != null
+        ? asNum(args[0], "max_words")
+        : undefined;
+      const maxChars = args.length >= 2 && args[1] != null
+        ? asNum(args[1], "max_chars")
+        : undefined;
+      return maxLength({ maxWords, maxChars });
+    }
+    case "no_pii": {
+      // Python signature: no_pii(fields=None, desc="")
+      const fields = args.length >= 1 && args[0] != null
+        ? asStrList(args[0], "fields")
+        : undefined;
+      return noPii(fields);
+    }
+    case "no_keywords":
+      return noKeywords(asStrList(needArg(args, 0, "words"), "words"));
+
+    // Layer 3 — external-fact (ctx) patterns
+    case "ctx_required":
+      return ctxRequired(
+        asStr(needArg(args, 0, "tool"), "tool"),
+        asStr(needArg(args, 1, "key"), "key"),
+        asStrList(needArg(args, 2, "allowed_values"), "allowed_values"),
+      );
+    case "ctx_matches_required":
+      return ctxMatchesRequired(
+        asStr(needArg(args, 0, "tool"), "tool"),
+        asStr(needArg(args, 1, "key"), "key"),
+        asStr(needArg(args, 2, "pattern"), "pattern"),
+      );
+
+    // Time-window patterns
+    case "time_since":
+      return timeSince(
+        asStr(needArg(args, 0, "predicate_key"), "predicate_key"),
+        asNum(needArg(args, 1, "max_seconds"), "max_seconds"),
+      );
+    case "approval_active":
+      return approvalActive(
+        asStr(needArg(args, 0, "action"), "action"),
+        asStr(needArg(args, 1, "role"), "role"),
+        asNum(needArg(args, 2, "max_seconds"), "max_seconds"),
+      );
+
+    // Deprecated alias (mirrors Python — delegates to mutual_exclusion).
+    case "never_together":
+      return neverTogether(
+        asStr(needArg(args, 0, "a"), "a"),
+        asStr(needArg(args, 1, "b"), "b"),
+      );
+
     default:
       return null;
   }
@@ -399,4 +463,12 @@ export const KNOWN_DET_PATTERNS: readonly string[] = Object.freeze([
   "irreversible_once",
   "token_budget",
   "delegation_depth_limit",
+  "max_length",
+  "no_pii",
+  "no_keywords",
+  "ctx_required",
+  "ctx_matches_required",
+  "time_since",
+  "approval_active",
+  "never_together",
 ]);

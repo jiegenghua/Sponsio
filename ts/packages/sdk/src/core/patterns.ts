@@ -247,7 +247,11 @@ export function deadline(trigger: string, action: string, steps: number): DetFor
     formula: f,
     desc: `\`${action}\` must occur within ${steps} steps of \`${trigger}\``,
     patternName: "deadline",
-    liveness: true,
+    // Bounded-window liveness: ``X(boundedEventually(action, steps))``
+    // is decidable on a bounded prefix (steps + 1 events past the
+    // trigger), so it CAN fire mid-session — runtime parity with
+    // Python ``deadline.liveness == False``.
+    liveness: false,
   };
 }
 
@@ -730,5 +734,248 @@ export function delegationDepthLimit(maxDepth: number): DetFormula {
     desc: `delegation chain must not exceed depth ${maxDepth}`,
     patternName: "delegation_depth_limit",
     liveness: false,
+  };
+}
+
+// --- Layer 3 — Response content patterns ---
+
+/** Default PII regex set, mirrored from Python ``_DEFAULT_PII_PATTERNS``. */
+const DEFAULT_PII_PATTERNS: Record<string, string> = {
+  ssn: "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+  credit_card: "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b",
+  email: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b",
+  phone: "\\b(?:\\+?1[-.\\s]?)?\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b",
+};
+
+/**
+ * Response length must stay within the given word / character budget.
+ *
+ * Grounded against ``response_words`` / ``response_chars`` populated on
+ * ``llm_response`` events with content. At non-response events both
+ * default to 0, so the constraint is vacuously satisfied.
+ */
+export function maxLength(opts: {
+  maxWords?: number;
+  maxChars?: number;
+  desc?: string;
+}): DetFormula {
+  const { maxWords, maxChars, desc } = opts;
+  if (maxWords == null && maxChars == null) {
+    throw new Error("max_length requires maxWords or maxChars");
+  }
+  const parts: Formula[] = [];
+  if (maxWords != null) parts.push(new Le(new Var("response_words"), new Const(maxWords)));
+  if (maxChars != null) parts.push(new Le(new Var("response_chars"), new Const(maxChars)));
+  const body: Formula = parts.length === 1 ? parts[0] : new And(parts[0], parts[1]);
+  const f = new G(body);
+
+  let descStr: string;
+  if (desc) descStr = desc;
+  else if (maxWords != null && maxChars != null)
+    descStr = `response ≤ ${maxWords} words and ≤ ${maxChars} chars`;
+  else if (maxWords != null) descStr = `response ≤ ${maxWords} words`;
+  else descStr = `response ≤ ${maxChars} chars`;
+
+  return {
+    formula: f,
+    desc: descStr,
+    patternName: "max_length",
+    liveness: false,
+  };
+}
+
+/**
+ * Response must not contain regex-detectable PII (SSN, CC, email, phone).
+ *
+ * Uses the ``llm_said`` grounding atom — the selected default patterns
+ * are joined with ``|`` and matched against each ``llm_response`` event.
+ * For semantic PII detection (names, contextual identifiers) use a sto
+ * atom; this pattern only covers syntactic PII.
+ */
+export function noPii(fields?: string[]): DetFormula {
+  const selected = fields ?? Object.keys(DEFAULT_PII_PATTERNS);
+  const unknown = selected.filter((f) => !(f in DEFAULT_PII_PATTERNS));
+  if (unknown.length > 0) {
+    throw new Error(
+      `unknown PII field(s): ${JSON.stringify(unknown.sort())}. ` +
+        `Available: ${JSON.stringify(Object.keys(DEFAULT_PII_PATTERNS).sort())}`,
+    );
+  }
+  const pattern = selected.map((f) => DEFAULT_PII_PATTERNS[f]).join("|");
+  const f = new G(new Not(new Atom("llm_said", [pattern])));
+  return {
+    formula: f,
+    desc: `response must not contain PII (${selected.join(", ")})`,
+    patternName: "no_pii",
+    liveness: false,
+  };
+}
+
+/**
+ * Response must not contain any of the given keywords. Keywords are
+ * escaped and joined into a word-boundary-anchored regex checked
+ * against each ``llm_response`` event via ``llm_said``.
+ *
+ * JS regex doesn't support inline ``(?i)`` flags — we lower-case the
+ * regex by expanding letters to ``[aA]``-style char classes, matching
+ * Python's ``(?i)`` semantics.
+ */
+export function noKeywords(words: string[]): DetFormula {
+  if (!words || words.length === 0) {
+    throw new Error("no_keywords requires at least one keyword");
+  }
+  const pattern = `\\b(${words.map((w) => caseInsensitiveLiteral(w)).join("|")})\\b`;
+  const f = new G(new Not(new Atom("llm_said", [pattern])));
+  return {
+    formula: f,
+    desc: `response must not contain keywords: ${JSON.stringify(words)}`,
+    patternName: "no_keywords",
+    liveness: false,
+  };
+}
+
+// --- Layer 3 — External-fact (ctx) patterns ---
+
+/**
+ * When ``tool`` is called, ``ctx[key]`` must be one of ``allowedValues``.
+ * Fail-closed: missing context evaluates to violation, so forgetting
+ * to wire ``observeContext`` is loud rather than silent.
+ */
+export function ctxRequired(
+  tool: string,
+  key: string,
+  allowedValues: string[],
+): DetFormula {
+  ensureNonEmpty(tool, "ctxRequired", "tool");
+  ensureNonEmpty(key, "ctxRequired", "key");
+  if (!allowedValues || allowedValues.length === 0) {
+    throw new Error(
+      "ctx_required: 'allowed_values' must not be empty — an empty " +
+        "allowlist rejects every call to the tool. Use " +
+        "`tool_allowlist([])` if you really want to block everything.",
+    );
+  }
+  const cleanValues = allowedValues.map((v) => String(v));
+  let disjunction: Formula = new Atom("ctx", [key, cleanValues[0]]);
+  for (let i = 1; i < cleanValues.length; i++) {
+    disjunction = new Or(disjunction, new Atom("ctx", [key, cleanValues[i]]));
+  }
+  const f = new G(new Implies(called(tool), disjunction));
+  return {
+    formula: f,
+    desc: `${tool} requires ctx[${key}] ∈ [${cleanValues.join(", ")}]`,
+    patternName: "ctx_required",
+    liveness: false,
+  };
+}
+
+/**
+ * When ``tool`` is called, ``ctx[key]`` must match the regex ``pattern``.
+ * Regex variant of :func:`ctxRequired` for cases where the allowed set
+ * is better expressed as a pattern than an exhaustive list.
+ */
+export function ctxMatchesRequired(
+  tool: string,
+  key: string,
+  pattern: string,
+): DetFormula {
+  ensureNonEmpty(tool, "ctxMatchesRequired", "tool");
+  ensureNonEmpty(key, "ctxMatchesRequired", "key");
+  ensureNonEmpty(pattern, "ctxMatchesRequired", "pattern");
+  const f = new G(new Implies(called(tool), new Atom("ctx_matches", [key, pattern])));
+  return {
+    formula: f,
+    desc: `${tool} requires ctx[${key}] to match /${pattern}/`,
+    patternName: "ctx_matches_required",
+    liveness: false,
+  };
+}
+
+// --- Time-window patterns (event-clock) ---
+
+/**
+ * Constrain how recently a predicate was last true. The argument is the
+ * grounded predicate key string (e.g. ``"called(refund)"`` or
+ * ``"ctx(approval.role, alice)"``) — same convention as Python's
+ * ``time_since`` factory.
+ */
+export function timeSince(predicateKey: string, maxSeconds: number): DetFormula {
+  ensureNonEmpty(predicateKey, "timeSince", "predicate_key");
+  if (typeof maxSeconds !== "number" || !Number.isFinite(maxSeconds) || maxSeconds < 0) {
+    throw new Error(
+      `time_since: max_seconds must be a non-negative number (got ${maxSeconds}).`,
+    );
+  }
+  const f = new G(new Le(new Var("time_since", predicateKey), new Const(maxSeconds)));
+  return {
+    formula: f,
+    desc: `${predicateKey} must have occurred within last ${maxSeconds}s`,
+    patternName: "time_since",
+    liveness: false,
+  };
+}
+
+/**
+ * Gate ``action`` on a recent allow-decision approval from ``role``.
+ *
+ * Compiles to::
+ *   G(called(action) → (
+ *     ctx_matches("approval.role", role)
+ *     ∧ ctx_matches("approval.decision", "allow")
+ *     ∧ time_since("ctx(approval.role, role)") ≤ maxSeconds
+ *   ))
+ *
+ * Pairs with ``observeApproval({role, decision})`` on the integration
+ * side.
+ */
+export function approvalActive(
+  action: string,
+  role: string,
+  maxSeconds: number,
+): DetFormula {
+  ensureNonEmpty(action, "approvalActive", "action");
+  ensureNonEmpty(role, "approvalActive", "role");
+  if (typeof maxSeconds !== "number" || !Number.isFinite(maxSeconds) || maxSeconds < 0) {
+    throw new Error(
+      `approval_active: max_seconds must be a non-negative number (got ${maxSeconds}).`,
+    );
+  }
+  // Match Python: ``role_key = f"ctx(approval.role, {role})"`` — exact
+  // string used as the time_since target. predKey would escape spaces /
+  // commas; keep the unescaped form so the time_since extractor passes
+  // the right key through to grounding's ``state.last_ts`` lookup.
+  const roleKey = `ctx(approval.role, ${role})`;
+  const escaped = role.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const body: Formula = new And(
+    new And(
+      new Atom("ctx_matches", ["approval.role", escaped]),
+      new Atom("ctx_matches", ["approval.decision", "allow"]),
+    ),
+    new Le(new Var("time_since", roleKey), new Const(maxSeconds)),
+  );
+  const f = new G(new Implies(called(action), body));
+  return {
+    formula: f,
+    desc: `${action} requires active ${role} approval (≤${maxSeconds}s old)`,
+    patternName: "approval_active",
+    liveness: false,
+  };
+}
+
+/**
+ * @deprecated — use :func:`mutualExclusion` instead.
+ *
+ * In sequential traces, two tool calls are always at different
+ * timesteps, so the formula ``G(¬(called(A) ∧ called(B)))`` is
+ * trivially satisfied and can never detect violations. Delegates to
+ * ``mutualExclusion`` for correct behavior; kept so yaml authored
+ * against Python's deprecated entry still loads.
+ */
+export function neverTogether(a: string, b: string): DetFormula {
+  const me = mutualExclusion(a, b);
+  return {
+    ...me,
+    patternName: "never_together",
+    desc: `${a} and ${b} must never occur together`,
   };
 }
