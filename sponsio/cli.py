@@ -3803,7 +3803,11 @@ def init(
         picks = parse_picks(plan_spec)
         cmds = plan_commands(picks, ts_project=env.runtime == "ts")
         if not cmds:
-            click.echo("(no commands — every axis is empty)")
+            click.echo(
+                "Nothing to do — picks select no framework wrap and no "
+                "IDE protection.  Re-run with at least one ``framework=`` "
+                "or ``ides=<ide>:full|skill``."
+            )
             return
         for cmd in cmds:
             click.echo("would run: " + " ".join(cmd))
@@ -3816,7 +3820,13 @@ def init(
 
     cmds = plan_commands(picks, ts_project=env.runtime == "ts")
     if not cmds:
-        click.echo("(no commands — every axis is empty)")
+        click.echo()
+        click.secho(
+            "Nothing to install — every axis was set to 'none'.  "
+            "Re-run `sponsio init` and pick at least one framework "
+            "wrap or IDE level (skill / full).",
+            fg="yellow",
+        )
         return
 
     # Dry-run preview before running, even on the interactive path —

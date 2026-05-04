@@ -380,30 +380,39 @@ def offer_demo(*, runner=None) -> None:
 
 
 def _print_panel_header(env: Environment) -> None:
-    """Top of the wizard — banner + detected metadata.
+    """Top of the wizard — banner + a single ``🔍 Detected: …`` line.
 
-    Uses Rich primitives from :mod:`sponsio.render.components` so the
-    visual style matches ``sponsio doctor`` / ``sponsio report`` output
-    instead of inventing a parallel aesthetic.
+    Visual style matches ``sponsio doctor`` / ``sponsio report`` via
+    the :mod:`sponsio.render.components` banner.  The detection
+    summary is a plain one-liner instead of a grid because the grid
+    blurred labels and values into a hard-to-parse soup of words.
     """
     from rich.console import Console
+    from rich.text import Text
 
-    from sponsio.render.components import header_banner, header_meta
+    from sponsio.render.components import header_banner
+    from sponsio.render.tokens import PALETTE
 
     console = Console(file=sys.stderr, soft_wrap=True)
     console.print()
     console.print(header_banner(tagline="onboarding wizard"))
     console.print()
-    ides_str = " · ".join(env.ides_installed) if env.ides_installed else "none"
-    console.print(
-        header_meta(
-            [
-                ("framework", env.framework),
-                ("ides", ides_str),
-                ("os", env.os_name),
-            ]
-        )
+
+    runtime_label = {"python": "Python", "ts": "TypeScript", "both": "Python+TS"}.get(
+        env.runtime, env.runtime
     )
+    ides_str = ", ".join(env.ides_installed) if env.ides_installed else "none"
+    summary = Text.assemble(
+        ("🔍 Detected: ", f"bold {PALETTE['brand']}"),
+        (runtime_label, PALETTE["fg"]),
+        (" · ", PALETTE["metadata"]),
+        (env.framework, PALETTE["fg"]),
+        (" · ", PALETTE["metadata"]),
+        (ides_str, PALETTE["fg"]),
+        (" · ", PALETTE["metadata"]),
+        (env.os_name, PALETTE["fg"]),
+    )
+    console.print(summary)
     console.print()
 
 
@@ -413,6 +422,7 @@ def _section(label: str) -> None:
     from sponsio.render.components import section_rule
 
     console = Console(file=sys.stderr, soft_wrap=True)
+    console.print()
     console.print(section_rule(label))
 
 
@@ -473,7 +483,7 @@ def run_interactive(env: Environment) -> InitPicks:
     _print_panel_header(env)
 
     # ---- Axis 1: framework wrap ----
-    _section("framework wrap")
+    _section("Framework wrap")
     fw_choices = []
     for fw in SUPPORTED_FRAMEWORKS:
         suffix = "  ← detected" if fw == env.framework else ""
@@ -493,19 +503,20 @@ def run_interactive(env: Environment) -> InitPicks:
     # "SKILL.md only, no enforcement".
     _section("Sponsio integration per IDE")
     click.echo(
-        "    none   — leave this IDE alone\n"
-        "    skill  — drop SKILL.md so the agent learns Sponsio "
+        "none   — leave this IDE alone\n"
+        "skill  — drop SKILL.md so the agent learns Sponsio "
         "(no enforcement)\n"
-        "    full   — host hooks + SKILL.md (the canonical 'protect "
-        "this IDE' pick)\n"
+        "full   — host hooks + SKILL.md (the canonical 'protect "
+        "this IDE' pick)"
     )
+    click.echo()
     ide_levels: dict[str, str] = {}
     for h in SUPPORTED_HOSTS:
         if h not in env.ides_installed:
-            click.secho(f"    {h:<14} (not installed — skipping)", dim=True)
+            click.secho(f"{h} — not installed, skipping", dim=True)
             continue
         level = _select(
-            f"  Sponsio level for {h}",
+            f"Sponsio level for {h}",
             list(IDE_LEVELS),
             default="none",
         )
@@ -517,12 +528,12 @@ def run_interactive(env: Environment) -> InitPicks:
     # binary's on PATH.
     if shutil.which("codex"):
         if click.confirm(
-            "  Drop Sponsio SKILL.md into Codex too?", default=False
+            "Drop Sponsio SKILL.md into Codex too?", default=False
         ):
             ide_levels["codex"] = "skill"
 
     # ---- Axis 3: mode ----
-    _section("mode for new contracts")
+    _section("Mode for new contracts")
     mode = _select(
         "Mode",
         ["observe", "enforce"],

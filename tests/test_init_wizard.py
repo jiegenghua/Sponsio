@@ -352,7 +352,7 @@ class TestCliPlan:
             [str(tmp_path), "--plan", "framework=none;mode=observe"],
         )
         assert result.exit_code == 0, result.output
-        assert "no commands" in result.output
+        assert "Nothing to do" in result.output
 
 
 class TestCliApply:
