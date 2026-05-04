@@ -607,14 +607,99 @@ async function runEmitContext(opts: OnboardOptions): Promise<void> {
     }
   }
   const entryCandidates = await detectEntryFileCandidates(root, framework);
+
+  // Mirror Python's ``health`` + ``pre_existing_contracts`` so the
+  // ``sponsio prompt onboard`` template's stop-and-ask gate and
+  // dedupe rule work identically across Python and TS callers.
+  // Cross-language parity: the IDE-agent wizard prompt branches on
+  // ``runtime`` to pick which emit-context binary to call, but the
+  // JSON shape both spit out has to be the same or the template's
+  // ``health == "empty" → stop`` branch silently never triggers
+  // for TS projects.
+  const policyDocs = collectPolicyDocs(root);
+  let health: "ok" | "tools_only" | "empty";
+  let healthDetail: string;
+  if (framework !== "none" && tools.length > 0) {
+    health = "ok";
+    healthDetail = "framework + tools detected";
+  } else if (tools.length > 0) {
+    health = "tools_only";
+    healthDetail =
+      "tool_inventory found tools but no framework dep matched in " +
+      "package.json — pick framework manually if the panel default " +
+      "is wrong";
+  } else if (framework !== "none") {
+    health = "tools_only";
+    healthDetail =
+      `framework ${framework} detected but tool_inventory is empty — ` +
+      "agent likely uses external SDK tools (MCP, prebuilt LangChain " +
+      "tools, OpenAI JSON schemas); grep the repo for tool registration";
+  } else {
+    health = "empty";
+    healthDetail =
+      "no framework, no tools — wrong scan path (monorepo + agent " +
+      "in subdir), or this is a bare function-calling loop, or the " +
+      "project is Python and you ran the TS probe";
+  }
+
+  // Best-effort parse of the on-disk yaml's ``contracts:`` block so
+  // the template's "skip any (pattern, primary_arg) already in
+  // pre_existing_contracts" rule has data to dedupe against.  Light
+  // parser — strict YAML lib failures shouldn't block the diagnostic
+  // JSON, just leave the list empty.
+  const preExistingContracts: Array<{
+    pattern: string;
+    args: unknown[];
+    source: string;
+  }> = [];
+  if (existingYaml) {
+    try {
+      const yamlMod = await import("js-yaml");
+      const data = yamlMod.load(existingYaml) as unknown;
+      if (data && typeof data === "object" && "agents" in (data as object)) {
+        const agents = (data as { agents?: Record<string, unknown> }).agents;
+        const agentBlock = agents?.[opts.agent];
+        if (agentBlock && typeof agentBlock === "object") {
+          const contracts = (agentBlock as { contracts?: unknown }).contracts;
+          if (Array.isArray(contracts)) {
+            for (const c of contracts) {
+              if (!c || typeof c !== "object") continue;
+              const body =
+                (c as { E?: unknown }).E && typeof (c as { E?: unknown }).E === "object"
+                  ? ((c as { E: unknown }).E as Record<string, unknown>)
+                  : (c as Record<string, unknown>);
+              const pattern = body.pattern;
+              if (typeof pattern !== "string") continue;
+              preExistingContracts.push({
+                pattern,
+                args: Array.isArray(body.args) ? (body.args as unknown[]) : [],
+                source:
+                  typeof body.source === "string"
+                    ? body.source
+                    : typeof (c as { source?: unknown }).source === "string"
+                      ? ((c as { source: string }).source)
+                      : "",
+              });
+            }
+          }
+        }
+      }
+    } catch {
+      // Light parser; on any error leave preExistingContracts empty.
+    }
+  }
+
   const payload = {
+    health,
+    health_detail: healthDetail,
     framework: { name: framework, evidence: "from package.json dependencies" },
     agent_id: opts.agent,
     tool_inventory: tools,
     auto_selected_packs: ["sponsio:core/universal"],
     needs_workspace: false,
     existing_yaml: existingYaml,
-    policy_docs: collectPolicyDocs(root),
+    pre_existing_contracts: preExistingContracts,
+    policy_docs: policyDocs,
     wrap_snippet: wrapSnippet,
     entry_file_candidates: entryCandidates,
     out_path: outPath,
