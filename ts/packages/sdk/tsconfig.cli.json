@@ -10,5 +10,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/cli/**/*"],
-  "exclude": ["node_modules", "dist", "src/cli/__tests__"]
+  "exclude": ["node_modules", "dist"]
 }
