@@ -146,10 +146,13 @@ G(Implies(
 
 ## Adding a new pattern
 
+Six steps:
+
 1. Add a factory to [`sponsio/patterns/library.py`](../../sponsio/patterns/library.py).
 2. If it needs a new observable, add atom extraction in [`sponsio/tracer/grounding.py`](../../sponsio/tracer/grounding.py).
-3. Add NL parsing in [`sponsio/generation/nl_to_contract.py`](../../sponsio/generation/nl_to_contract.py).
-4. Tests for pattern behavior and NL parsing.
-5. If the pattern belongs in the TS det core, mirror in [`ts/packages/sdk/src/core/patterns.ts`](../../ts/packages/sdk/src/core/patterns.ts).
-   If you don't mirror it, add a row to [`ts-sdk-parity.md`](ts-sdk-parity.md) so users know.
-6. Document it here.
+3. Register it for NL parsing in [`sponsio/generation/nl_to_contract.py`](../../sponsio/generation/nl_to_contract.py).
+4. Tests in [`tests/test_patterns.py`](../../tests/test_patterns.py) (formula) and [`tests/test_nl_parser.py`](../../tests/test_nl_parser.py) (NL round-trip).
+5. Mirror in [`ts/packages/sdk/src/core/patterns.ts`](../../ts/packages/sdk/src/core/patterns.ts), or add a row to [`ts-sdk-parity.md`](ts-sdk-parity.md) if TS can't ground the atoms it uses.
+6. Document a row here, plus a `### Added` entry in `CHANGELOG.md`.
+
+For the full worked example end-to-end, with code excerpts from `sanitized_before_sink`, see [CONTRIBUTING § Adding a new pattern](../../CONTRIBUTING.md#adding-a-new-pattern).

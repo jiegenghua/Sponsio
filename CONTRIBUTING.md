@@ -200,29 +200,148 @@ tests, ruff lint + format check. A green CI is required before review.
 
 ## Adding a new pattern
 
-The mechanical path, end-to-end, for a det pattern:
+The mechanical path for a det pattern, end to end. The worked example is `sanitized_before_sink(source, sanitizer, sink)`: after an untrusted source is read, the sanitizer must run before the sink does.
 
-1. **Implement the formula.** Add a function to
-   `sponsio/patterns/library.py` that returns a `DetFormula` (an LTL
-   `Formula` + NL description). Use the existing atom vocabulary when
-   you can; register new atoms via `register_atom()` if you must.
-2. **Wire up NL parsing.** Add the keyword trigger + argument
-   extraction to `sponsio/generation/nl_to_contract.py` so users can
-   write the pattern in natural language.
-3. **Test both paths.** Add cases to
-   `tests/test_patterns_library.py` (formula correctness) and
-   `tests/test_nl_to_contract.py` (NL round-trip).
-4. **Document it.** Add a row to the pattern table in `README.md` and
-   an entry in `docs/concepts/contracts.md` with an NL example and a "what it
-   enforces" sentence. Add to the `[Unreleased]` `### Added` block in
-   `CHANGELOG.md`.
+### 1. Implement the formula
 
-Stochastic atoms (LLM-judge evaluators) are part of [Sponsio
-Cloud](docs/reference/oss-scope.md#in-sponsio-cloud-commercial--pip-install-sponsiocloud);
-the OSS engine ships an empty sto registry plus a `Judge` extension
-point. Patches that add new sto evaluators land in the cloud repo
-and are not accepted here. Patches that improve the OSS extension
-point are very welcome.
+Add a factory to [`sponsio/patterns/library.py`](sponsio/patterns/library.py) that returns a `DetFormula`. Use existing atoms (`called`, `count`, `arg_has`, `arg_paths_within`, ...) when you can.
+
+```python
+def sanitized_before_sink(
+    source: str,
+    sanitizer: str,
+    sink: str,
+    desc: str = "",
+) -> DetFormula:
+    """After an untrusted source is read, require sanitization before sink use."""
+    _ensure_distinct(source, sanitizer, pattern="sanitized_before_sink",
+                     arg_a="source", arg_b="sanitizer")
+    _ensure_distinct(sanitizer, sink, pattern="sanitized_before_sink",
+                     arg_a="sanitizer", arg_b="sink")
+    _ensure_distinct(source, sink, pattern="sanitized_before_sink",
+                     arg_a="source", arg_b="sink")
+
+    formula = G(Implies(
+        _called(source),
+        X(_forbidden_until(_called(sanitizer), _called(sink))),
+    ))
+    return DetFormula(
+        formula=formula,
+        desc=desc or f"`{source}` must be sanitized by `{sanitizer}` before `{sink}`",
+        pattern_name="sanitized_before_sink",
+        args=(source, sanitizer, sink),
+    )
+```
+
+Two conventions matter:
+- **`pattern_name`** must match the function name. The pattern store, NL parser, and `customized:` overrides all key off this string.
+- **`args=(...)`** captures the raw call arguments so the pattern store can round-trip them. Without it, `sponsio packs`, `sponsio explain`, and dashboard exports lose the user's original parameter values.
+
+### 2. Add atom extraction (only if you need a new atom)
+
+Most patterns compose existing atoms. Skip this step if yours does. If you do need a new atom, add it to [`sponsio/tracer/grounding.py`](sponsio/tracer/grounding.py) with extraction logic, and register it in `_CONTENT_PREDICATES` if it takes parameters (regex, prefixes, ...).
+
+`sanitized_before_sink` only uses `called(...)`, so step 2 is N/A.
+
+### 3. Register the pattern for NL parsing
+
+Add it to [`sponsio/generation/nl_to_contract.py`](sponsio/generation/nl_to_contract.py) so users can write the pattern as natural language.
+
+```python
+# top-of-file import
+from sponsio.patterns.library import (
+    ...,
+    sanitized_before_sink,
+)
+
+# _PATTERN_REGISTRY (structured form: `pattern: sanitized_before_sink`)
+_PATTERN_REGISTRY = {
+    ...,
+    "sanitized_before_sink": sanitized_before_sink,
+}
+
+# NL trigger rule (regex list + pattern name + expected arg count)
+(
+    [
+        r"sanit(?:ize|ation).*before",
+        r"(?:source|input).*sanitizer.*sink",
+    ],
+    "sanitized_before_sink",
+    3,
+),
+
+# In the pattern dispatch (after action extraction):
+if pattern_name == "sanitized_before_sink":
+    if len(actions) < 3:
+        return _build_error(
+            nl_line, "sanitized_before_sink",
+            "sanitized_before_sink needs source, sanitizer, and sink actions",
+        )
+    formula = sanitized_before_sink(actions[0], actions[1], actions[2], desc=text)
+```
+
+### 4. Test both paths
+
+Two test files. Both are required.
+
+[`tests/test_patterns.py`](tests/test_patterns.py) covers formula correctness:
+
+```python
+def test_sanitized_before_sink_requires_sanitizer_after_source():
+    af = sanitized_before_sink("web_fetch", "sanitize_input", "send_email")
+    assert af.pattern_name == "sanitized_before_sink"
+    assert evaluate(af.formula, [_called("web_fetch"), _called("send_email")]) is False
+    assert evaluate(
+        af.formula,
+        [_called("web_fetch"), _called("sanitize_input"), _called("send_email")],
+    )
+```
+
+[`tests/test_nl_parser.py`](tests/test_nl_parser.py) covers the NL round-trip:
+
+```python
+def test_sanitized_before_sink(self):
+    r = parse_nl_rule_based(
+        "`web_fetch` input must be sanitized by `sanitize_input` before `send_email`"
+    )
+    assert r.ok
+    assert r.pattern_name == "sanitized_before_sink"
+```
+
+For end-to-end (NL → guard → block / allow), [`tests/test_pattern_e2e.py`](tests/test_pattern_e2e.py) is the right home.
+
+### 5. Mirror in TS (or document the gap)
+
+The TS engine lives at [`ts/packages/sdk/src/core/patterns.ts`](ts/packages/sdk/src/core/patterns.ts). If your pattern composes atoms TS already grounds (`called`, `count`, `arg_has`, `arg_field_has`, `arg_paths_within`), mirror the factory there and add a TS test in `ts/packages/sdk/src/__tests__/patterns.test.ts`.
+
+If your pattern uses an atom TS does not ground (LLM-observation atoms, data-flow predicates), add a row to [`docs/reference/ts-sdk-parity.md`](docs/reference/ts-sdk-parity.md) so TS users know the pattern is Python-only.
+
+### 6. Document
+
+Three places. All required.
+
+| File | What to add |
+|---|---|
+| [`docs/reference/patterns.md`](docs/reference/patterns.md) | Row in the appropriate category table (Safety / Compliance / Operational / Approval and audit / ...) with NL example and one-line "what it enforces". |
+| [`README.md`](README.md) | Pattern Library mention if the pattern is high-leverage enough to feature. Ask in the PR. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Entry under `[Unreleased]` `### Added` ("New pattern: `sanitized_before_sink(source, sanitizer, sink)` for taint-tracking gates."). |
+
+### Checklist
+
+Before opening the PR:
+
+- [ ] Factory in `sponsio/patterns/library.py` returns `DetFormula` with correct `pattern_name` and `args`.
+- [ ] Pattern registered in `nl_to_contract.py` (import, registry, dispatch).
+- [ ] Formula test in `tests/test_patterns.py`.
+- [ ] NL test in `tests/test_nl_parser.py`.
+- [ ] TS mirror landed, OR row added to `ts-sdk-parity.md`.
+- [ ] Row added to `docs/reference/patterns.md`.
+- [ ] `[Unreleased]` entry in `CHANGELOG.md`.
+- [ ] `pytest -v` and `ruff check sponsio/ tests/` both green.
+
+### Stochastic atoms
+
+Stochastic atoms (LLM-judge evaluators) are part of [Sponsio Cloud](docs/reference/oss-scope.md#in-sponsio-cloud-commercial--pip-install-sponsiocloud); the OSS engine ships an empty sto registry plus a `Judge` extension point. Patches that add new sto evaluators land in the cloud repo and are not accepted here. Patches that improve the OSS extension point are very welcome.
 
 ---
 
