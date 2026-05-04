@@ -84,3 +84,12 @@ sponsio-code-review.md
 
 # Claude Code
 .claude/
+
+# Maintainer-local helpers (not shipped publicly).
+# scripts/ is build / QA / sync tooling for the maintainer; OSS users
+# don't need it (``[tool.setuptools.packages.find]`` only ships
+# ``sponsio*`` to PyPI). The companion CI guard test
+# (``test_init_examples_sync.py``) is also maintainer-only because its
+# error message references the scripts we keep local.
+scripts/
+tests/test_init_examples_sync.py

@@ -1,0 +1,285 @@
+# =============================================================================
+# sponsio/contracts/capability/host-config-integrity.yaml
+#
+# Capability pack — IDE host config integrity protection.
+# Include in your per-host bucket (``_host_cursor`` /
+# ``_host_claude_code`` / ``_host_codex`` / ``_host_windsurf``)
+# so the agent under guard cannot disable Sponsio by rewriting
+# the IDE's hook registration files.
+#
+# Threat model:
+#
+# Sponsio's enforcement on IDE coding agents is mediated through
+# the host IDE's hook system: Cursor's ``.cursor/hooks.json``,
+# Claude Code's ``~/.claude/settings.json`` /
+# ``.claude/settings.local.json``, the per-project ``.claude/hooks/``
+# directory, etc. These files declare WHICH commands the IDE invokes
+# at which hook events. If the agent can rewrite them, it doesn't
+# need to defeat any individual rule — it just removes the
+# ``preToolUse`` entry that calls Sponsio at all, and on the next IDE
+# restart Sponsio is silently absent. Every rule in
+# ``capability/self-modify`` and ``incident/subagent-escape`` keeps
+# working perfectly, against an enforcer that no longer exists.
+# This is sponsio:capability/self-modify's blind spot — that pack
+# protects the rule files; this pack protects the wiring that
+# routes calls to the rule files in the first place.
+#
+# Concrete attack shapes observed (or trivially derivable from §1
+# of self-modify.yaml's threat model):
+#
+#   1. ``Write .cursor/hooks.json '{"version":1,"hooks":{}}'``
+#      — wipe all hook entries; next Cursor restart, no enforcement.
+#   2. ``Edit .cursor/hooks.json``: change ``"failClosed": true``
+#      to ``"failClosed": false`` — Sponsio is still wired in but
+#      any spawn / parse / runtime error fails open.
+#   3. ``Write merge_hooks.py`` whose content opens hooks.json in
+#      'w' mode (the §4 self-modify bypass shape, instantiated
+#      against hook config instead of plugin yaml).
+#   4. ``python -c "open('.cursor/hooks.json','w').write('...')"``
+#      — the §5 self-modify interpreter-bypass shape against hook
+#      config.
+#   5. ``echo '{}' > .cursor/hooks.json`` / ``sed -i 's/true/false/'``
+#      — bash redirect / mutator forms that the self-modify pack
+#      doesn't currently match because its regex anchors on
+#      ``.sponsio/plugins/...`` paths only.
+#
+# What this pack denies:
+#
+#   - Edit / Write / MultiEdit on the IDE hook registration files.
+#   - Bash redirect / sed / awk / tee that targets the same files.
+#   - Script *creation* whose content references a hook config path
+#     AND uses an open-for-write idiom (mirror of self-modify §4).
+#   - Interpreter invocation whose command line carries a hook
+#     config path (mirror of self-modify §5).
+#
+# What this pack does NOT deny:
+#
+#   - ``sponsio host install`` and ``sponsio host uninstall``
+#     write hooks.json via Python subprocess from the Sponsio
+#     binary itself, not through the agent's Edit / Write tool
+#     surface — the legitimate install path is unaffected.
+#   - The user hand-editing hooks.json in their text editor
+#     similarly does not pass through the IDE's Edit / Write
+#     tool; this pack is silent on that surface.
+#   - Reads of hook config files are not denied. The file format
+#     is documented public knowledge; recon defense here would
+#     give negligible benefit at significant false-positive cost
+#     (legitimate "what hooks are registered?" debug queries).
+#     The subagent-escape pack covers the recon angle for
+#     sub-agents specifically.
+#
+# Pair with: ``sponsio:capability/self-modify`` (rule-file integrity)
+# and ``sponsio:incident/subagent-escape`` (sub-agent containment).
+# Together the three packs form the control-plane defense surface
+# documented in ``agent_docs/control_plane_threat_model.md``.
+#
+# Include via:
+#   include:
+#     - sponsio:capability/host-config-integrity
+#
+# Source tag convention:
+#   library:tier1.host-config-integrity
+# =============================================================================
+
+version: "1"
+
+agents:
+  "*":
+    contracts:
+
+      # =================================================================
+      # § 1 — No agent-mediated Edit of IDE hook config
+      # =================================================================
+      #
+      # Path set covers the wiring files for every host Sponsio
+      # currently supports. Add new hosts here as ``sponsio host
+      # install`` learns to register them.
+      #
+      # Anchor pattern note:
+      #
+      #   The ``(^|/)`` anchor at the start of each alternative
+      #   matches both absolute paths (``/Users/x/.cursor/hooks.json``)
+      #   and project-relative paths (``.cursor/hooks.json``). The
+      #   ``$`` anchors at the end pin the match to exact filenames,
+      #   so a file named ``hooks.json.bak`` or ``settings.json.tmpl``
+      #   stays editable.
+      #
+      # The Cursor MCP config (``.cursor/mcp.json``) is included
+      # because it's the file that declares Sponsio's MCP server
+      # to Cursor — same disable-by-rewrite attack shape, different
+      # file. Same for Claude Code's ``hooks/`` directory.
+
+      - desc: "Host agent must not edit IDE hook / MCP wiring files — disabling Sponsio's call site is privilege escalation"
+        G:
+          pattern: arg_blacklist
+          args:
+            - Edit
+            - file_path
+            - - "(^|/)\\.cursor/hooks\\.json$"
+              - "(^|/)\\.cursor/mcp\\.json$"
+              - "(^|/)\\.claude/settings\\.json$"
+              - "(^|/)\\.claude/settings\\.local\\.json$"
+              - "(^|/)\\.claude/hooks/[^/]+\\.json$"
+              - "(^|/)\\.codex/hooks\\.json$"
+              - "(^|/)\\.windsurf/hooks\\.json$"
+          source: "library:tier1.host-config-integrity"
+
+      # =================================================================
+      # § 2 — No agent-mediated Write of IDE hook config
+      # =================================================================
+      #
+      # ``Write`` overwrites the whole file — closes the
+      # "delete-and-recreate-empty" workaround a pure ``Edit`` block
+      # would leave open.
+
+      - desc: "Host agent must not overwrite IDE hook / MCP wiring files — use `sponsio host install` / hand-edit"
+        G:
+          pattern: arg_blacklist
+          args:
+            - Write
+            - file_path
+            - - "(^|/)\\.cursor/hooks\\.json$"
+              - "(^|/)\\.cursor/mcp\\.json$"
+              - "(^|/)\\.claude/settings\\.json$"
+              - "(^|/)\\.claude/settings\\.local\\.json$"
+              - "(^|/)\\.claude/hooks/[^/]+\\.json$"
+              - "(^|/)\\.codex/hooks\\.json$"
+              - "(^|/)\\.windsurf/hooks\\.json$"
+          source: "library:tier1.host-config-integrity"
+
+      # =================================================================
+      # § 3 — No agent-mediated MultiEdit of IDE hook config
+      # =================================================================
+
+      - desc: "Host agent must not multi-edit IDE hook / MCP wiring files — use `sponsio host install` / hand-edit"
+        G:
+          pattern: arg_blacklist
+          args:
+            - MultiEdit
+            - file_path
+            - - "(^|/)\\.cursor/hooks\\.json$"
+              - "(^|/)\\.cursor/mcp\\.json$"
+              - "(^|/)\\.claude/settings\\.json$"
+              - "(^|/)\\.claude/settings\\.local\\.json$"
+              - "(^|/)\\.claude/hooks/[^/]+\\.json$"
+              - "(^|/)\\.codex/hooks\\.json$"
+              - "(^|/)\\.windsurf/hooks\\.json$"
+          source: "library:tier1.host-config-integrity"
+
+      # =================================================================
+      # § 4 — No script creation that mutates IDE hook config
+      #       (mirror of self-modify §4, against hook paths)
+      # =================================================================
+      #
+      # The same lookahead-conjunction shape as self-modify §4: deny
+      # only if the content carries BOTH a hook-config path AND a
+      # write-shape idiom. Pure docs that mention the path stay
+      # editable — the rule is narrow on purpose.
+
+      - desc: "Host agent must not write a script that mutates IDE hook / MCP wiring files"
+        G:
+          pattern: arg_blacklist
+          args:
+            - Write
+            - content
+            - - "(?s)(?=.*\\.cursor/(hooks|mcp)\\.json|\\.claude/(settings(\\.local)?\\.json|hooks/)|\\.codex/hooks\\.json|\\.windsurf/hooks\\.json).*(\\.write_text\\s*\\(|\\.write_bytes\\s*\\(|\\bf\\.write\\s*\\(|\\bopen\\s*\\([^)]*['\\\"][aw][\\+bxt]*['\\\"]\\s*\\)|\\bfs\\.(writeFileSync|appendFileSync|createWriteStream|writeFile)\\s*\\(|\\bFile\\.(open|write)\\s*\\(|\\b(IO|File)\\.write\\b)"
+          source: "library:tier1.host-config-integrity"
+
+      - desc: "Host agent must not edit a script that mutates IDE hook / MCP wiring files"
+        G:
+          pattern: arg_blacklist
+          args:
+            - Edit
+            - new_string
+            - - "(?s)(?=.*\\.cursor/(hooks|mcp)\\.json|\\.claude/(settings(\\.local)?\\.json|hooks/)|\\.codex/hooks\\.json|\\.windsurf/hooks\\.json).*(\\.write_text\\s*\\(|\\.write_bytes\\s*\\(|\\bf\\.write\\s*\\(|\\bopen\\s*\\([^)]*['\\\"][aw][\\+bxt]*['\\\"]\\s*\\)|\\bfs\\.(writeFileSync|appendFileSync|createWriteStream|writeFile)\\s*\\(|\\bFile\\.(open|write)\\s*\\(|\\b(IO|File)\\.write\\b)"
+          source: "library:tier1.host-config-integrity"
+
+      # =================================================================
+      # § 5 — No interpreter invocation targeting IDE hook config
+      #       (mirror of self-modify §5, against hook paths)
+      # =================================================================
+      #
+      # Catches both inline forms (``python -c "...hooks.json..."``)
+      # and path-as-argument forms (``python merge.py
+      # .cursor/hooks.json``). The ``[^|\n]*`` between the
+      # interpreter token and the path token excludes cross-pipeline
+      # matches, same idiom as self-modify §5.
+
+      - desc: "Host agent must not run an interpreter against IDE hook / MCP wiring files"
+        G:
+          pattern: arg_blacklist
+          args:
+            - Bash
+            - command
+            - - "\\b(python|python2|python3|node|deno|bun|ruby|perl|php|lua|tclsh|R|Rscript)\\b[^|\\n]*(\\.cursor/(hooks|mcp)\\.json|\\.claude/(settings(\\.local)?\\.json|hooks/)|\\.codex/hooks\\.json|\\.windsurf/hooks\\.json)"
+          source: "library:tier1.host-config-integrity"
+
+      # =================================================================
+      # § 6 — No bash redirect / mutator targeting IDE hook config
+      # =================================================================
+      #
+      # Catches the cheap shell shapes that don't go through any
+      # interpreter: ``echo '{}' > hooks.json``, ``cat /dev/null >
+      # settings.json``, ``: > hooks.json``, ``sed -i 's/true/false/'
+      # hooks.json``, ``tee hooks.json``, ``cp empty.json
+      # hooks.json``, ``mv x hooks.json``, ``rm hooks.json``.
+      #
+      # The pattern is "any of {redirect, sed, awk, tee, cp, mv,
+      # rm, install} adjacent to a hook-config path on the same
+      # command line". Read-only patterns (``cat hooks.json``,
+      # ``jq . hooks.json``, ``grep ... hooks.json``) are NOT
+      # matched — they don't carry a mutator verb in front of the
+      # path, so the alternation never triggers.
+      #
+      # Edge case: ``python ... > hooks.json`` is already caught
+      # by §5 via the interpreter alternation. No double-deny harm
+      # since this is the deny side of the contract anyway.
+
+      - desc: "Host agent must not redirect / sed / tee / mv / rm an IDE hook / MCP wiring file"
+        G:
+          pattern: arg_blacklist
+          args:
+            - Bash
+            - command
+            - - "(>\\s*|>>\\s*|\\btee\\b[^|\\n]*|\\bsed\\b\\s+-i[^|\\n]*|\\bawk\\b[^|\\n]*-i[^|\\n]*|\\bcp\\b[^|\\n]+|\\bmv\\b[^|\\n]+|\\brm\\b[^|\\n]+|\\binstall\\b[^|\\n]+)(\\.cursor/(hooks|mcp)\\.json|\\.claude/(settings(\\.local)?\\.json|hooks/[^\\s|]+)|\\.codex/hooks\\.json|\\.windsurf/hooks\\.json)"
+          source: "library:tier1.host-config-integrity"
+
+# -----------------------------------------------------------------------------
+# Integration requirements
+# -----------------------------------------------------------------------------
+#
+# - This pack assumes the host agent's Edit / Write / MultiEdit
+#   tool exposes ``file_path`` (Claude Code, Cursor, Codex all
+#   currently do). Hosts using a different param name will need
+#   the per-host adjustment that ``self-modify.yaml`` already
+#   documents.
+#
+# - The path set is the union of every Sponsio-supported host's
+#   wiring files. A given per-host bucket only needs the entries
+#   matching ITS host, but keeping the union here means the pack
+#   stays a single drop-in include with no per-host customization
+#   required at the call site. False-positive cost is zero —
+#   ``.cursor/hooks.json`` is only present in Cursor projects, so
+#   a Claude Code agent's edits to a non-existent path will never
+#   match anyway.
+#
+# - The ``"*"`` agent scope means these rules apply to every agent
+#   in any library that includes this pack. Recommended include
+#   site is the per-host bucket (``_host_cursor`` /
+#   ``_host_claude_code``), so the rules fire on the host that
+#   actually has the wiring file in question.
+#
+# - The bash mutator regex in §6 is intentionally broader than
+#   self-modify §5's interpreter-only regex. That's correct: hook
+#   config files are JSON, so non-interpreter shell mutators
+#   (sed, tee, cp) are the natural attack surface and they don't
+#   apply to .sponsio/plugins/*.yaml the same way (yaml requires
+#   careful editing that bash one-liners typically don't produce
+#   correctly, so the attack-shape distribution differs).
+#
+# - Read of hook config files is permitted. If a future incident
+#   pack wants to deny reads (e.g. for a defense-in-depth recon
+#   block similar to subagent-escape §4), add it as a separate
+#   ``incident/host-config-recon.yaml`` rather than expanding
+#   this capability pack — capability packs stay narrowly scoped
+#   to a single privilege boundary.
