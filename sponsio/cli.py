@@ -4076,11 +4076,27 @@ def onboard(
         from sponsio.discovery.extractors.code_analysis import CodeAnalyzer
         from sponsio.onboard import detect_framework, select_packs
 
-        framework = detect_framework(root)
         # AST-only — explicit ``use_llm=False`` so this path never
         # reads any provider env var.
         analyzer = CodeAnalyzer(use_llm=False)
         tool_inventory = analyzer.get_tool_inventory([str(root)]) or []
+        # Run framework detection AFTER tool inventory, prioritizing
+        # the files the extractor already pinned as agent code — fixes
+        # the monorepo case where 200+ pad files at the root could
+        # exhaust the framework scan cap before the agent file (in a
+        # deep subdir) was reached, leaving framework="none" even
+        # though tool_inventory had found ``@tool`` functions there.
+        prioritize_files: list[Path] = []
+        for t in tool_inventory:
+            fp = t.get("filepath") if isinstance(t, dict) else None
+            if not fp:
+                continue
+            p = Path(fp)
+            if not p.is_absolute():
+                p = root / p
+            if p.is_file():
+                prioritize_files.append(p)
+        framework = detect_framework(root, prioritize_files=prioritize_files)
         pack_selection = select_packs(framework.framework, tool_inventory)
 
         existing_yaml_text = ""

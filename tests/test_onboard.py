@@ -262,6 +262,36 @@ class TestDetectFramework:
         hint = detect_framework(tmp_path)
         assert hint.framework == "none"
 
+    def test_monorepo_pad_files_do_not_starve_detection(
+        self, tmp_path: Path
+    ):
+        """250 unrelated .py files at the repo root must NOT cause the
+        framework detector to miss the agent file in a deep subdir.
+
+        Repro of the asymmetry that bit ``sponsio onboard --emit-context``
+        on real monorepos: tool inventory's walker has no scan cap and
+        correctly found ``@tool`` functions in ``services/api/src/``,
+        but framework detection's bounded walker exhausted on the pad
+        files first and returned ``framework: none``.  The fix passes
+        the tool-extractor's file hits in as ``prioritize_files`` so
+        they're guaranteed to be scanned before the cap kicks in.
+        """
+        for i in range(250):
+            (tmp_path / f"pad_{i}.py").write_text(f"x = {i}\n")
+        agent_dir = tmp_path / "services" / "api" / "src"
+        agent_dir.mkdir(parents=True)
+        agent_file = agent_dir / "agent.py"
+        agent_file.write_text(
+            "from langgraph.prebuilt import create_react_agent\n"
+            "from langchain_core.tools import tool\n"
+        )
+
+        hint = detect_framework(
+            tmp_path, prioritize_files=[agent_file]
+        )
+        assert hint.framework == "langgraph"
+        assert hint.factory == "sponsio.langgraph"
+
 
 # ---------------------------------------------------------------------------
 # detect_provider

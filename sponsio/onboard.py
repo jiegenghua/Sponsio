@@ -128,36 +128,36 @@ class FrameworkHint:
 def _iter_py_files(root: Path) -> list[Path]:
     """List .py files under ``root``, skipping the usual dependency dirs.
 
+    Delegates the skip-set to :func:`sponsio.discovery.loaders.iter_python_files`
+    so framework detection and the AST tool extractor walk the same
+    files.  Previously each had its own filter — onboard's was the
+    smaller of the two — and a monorepo with ~250 unrelated ``.py``
+    files at the root could exhaust :data:`_IMPORT_SCAN_MAX_FILES`
+    before the agent file in a deep subdir was reached, leaving
+    ``framework: none`` even though ``tool_inventory`` had already
+    found ``@tool`` functions in that exact file.
+
     Bounded by :data:`_IMPORT_SCAN_MAX_FILES` so a 100k-file
     monorepo doesn't turn ``sponsio onboard`` into a 20-second
     operation — we only need representative imports, not every one.
+    Callers that already know which files contain agent code (after
+    running tool inventory) should pass them via
+    ``detect_framework(..., prioritize_files=...)`` so they're
+    scanned before the cap kicks in.
     """
-    skip_parts = {
-        ".venv",
-        "venv",
-        "node_modules",
-        "__pycache__",
-        ".git",
-        "site-packages",
-        ".tox",
-        ".mypy_cache",
-        ".pytest_cache",
-        "dist",
-        "build",
-    }
-    out: list[Path] = []
     if root.is_file():
         return [root] if root.suffix == ".py" else []
-    for p in root.rglob("*.py"):
-        if any(part in skip_parts for part in p.parts):
-            continue
-        out.append(p)
-        if len(out) >= _IMPORT_SCAN_MAX_FILES:
-            break
-    return out
+
+    from sponsio.discovery.loaders import iter_python_files
+
+    return iter_python_files(root)[:_IMPORT_SCAN_MAX_FILES]
 
 
-def detect_framework(root: Path) -> FrameworkHint:
+def detect_framework(
+    root: Path,
+    *,
+    prioritize_files: list[Path] | None = None,
+) -> FrameworkHint:
     """Identify the agent framework used in the project.
 
     Two-stage detection:
@@ -176,7 +176,27 @@ def detect_framework(root: Path) -> FrameworkHint:
     ``sponsio.Sponsio(...)`` + ``guard.guard_before/after`` pattern
     works for custom function-calling loops.
     """
-    files = _iter_py_files(root)
+    bounded = _iter_py_files(root)
+    if prioritize_files:
+        # Walk priority files first so the cap can never starve us of
+        # the file that actually carries the framework import.  Dedup
+        # by resolved path (priority + bounded scan often overlap on
+        # small projects).
+        seen: set[Path] = set()
+        files: list[Path] = []
+        for p in list(prioritize_files) + bounded:
+            try:
+                key = p.resolve()
+            except OSError:
+                key = p
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(p)
+        files = files[:_IMPORT_SCAN_MAX_FILES]
+    else:
+        files = bounded
+
     total_bytes = 0
     per_framework_hits: dict[str, tuple[int, Path]] = {}
     import_re = re.compile(r"^\s*(?:from|import)\s+([A-Za-z_][\w.]*)")
@@ -712,7 +732,7 @@ def _emit_pack_block(
         out.append("")
 
     out.append("    # Auto-selected contract packs.  Each pack ships a curated set")
-    out.append("    # of rules; use `overrides:` below to disable individual ones")
+    out.append("    # of rules; use `customized:` below to disable individual ones")
     out.append("    # without forking the pack.")
     out.append("    include:")
     for pack, why in zip(selection.packs, selection.evidence):
@@ -1063,16 +1083,13 @@ def run_onboard(
             f"{out_path} already exists. Pass force=True (CLI: --force) to overwrite."
         )
 
-    # --- Stage 1: framework detection -----------------------------------
-    # Don't emit a "framework: ..." progress line here — the final
-    # summary already prints framework/provider, and a pre-emit just
-    # repeats the same info one second before the summary lands.
-    framework = detect_framework(root)
-
-    # --- Stage 2: provider detection ------------------------------------
+    # --- Stage 1: provider detection ------------------------------------
+    # Provider goes first because the analyzer it feeds is needed by
+    # tool inventory, which we now run before framework detection so
+    # the latter can prioritize files where tools were actually found.
     provider = detect_provider(probe_ollama=probe_ollama)
 
-    # --- Stage 3: scan + starter-pack -----------------------------------
+    # --- Stage 2: scan + starter-pack -----------------------------------
     # ``▸`` prefix is recognised by the CLI's progress sink as a
     # section header — printed bold-cyan without the ``· `` per-step
     # bullet.  Splits the long scan/LLM/pack stretch from the doctor
@@ -1117,6 +1134,25 @@ def run_onboard(
     analyzer = CodeAnalyzer(**analyzer_kwargs)
 
     tool_inventory = analyzer.get_tool_inventory([str(p) for p in scan_paths])
+
+    # --- Stage 3: framework detection (after tool inventory) ------------
+    # The tool extractor walks the same project but with a more
+    # aggressive skip set + no scan cap, so when both pipelines see
+    # the same monorepo the tool extractor still finds the agent file
+    # while a naive bounded import grep can miss it.  Feed the
+    # extractor's hits in as priorities so the framework detector
+    # can never starve on pad files.
+    prioritize_files: list[Path] = []
+    for t in tool_inventory or []:
+        fp = t.get("filepath") if isinstance(t, dict) else None
+        if not fp:
+            continue
+        p = Path(fp)
+        if not p.is_absolute():
+            p = root / p
+        if p.is_file():
+            prioritize_files.append(p)
+    framework = detect_framework(root, prioritize_files=prioritize_files)
 
     scan_yaml = analyzer.generate_yaml(
         [str(p) for p in scan_paths],
