@@ -169,11 +169,27 @@ class TestGateViolations:
 
 @pytest.fixture
 def example_corpus(tmp_path: Path) -> Path:
-    """Drop the bundled example into tmp_path so we have a real
-    corpus to evaluate against."""
-    from sponsio.init_wizard import install_example
+    """Copy the canonical ``examples/eval/`` corpus into ``tmp_path``
+    so we have a real, working corpus to evaluate against without
+    mutating the repo copy.
+    """
+    import shutil
 
-    install_example(tmp_path, force=True)
+    repo_root = Path(__file__).resolve().parents[1]
+    src = repo_root / "examples" / "eval"
+    if not src.is_dir():
+        pytest.skip(
+            "examples/eval/ corpus not present (running outside the repo checkout)"
+        )
+    for child in src.iterdir():
+        # Skip helper artefacts that aren't part of the corpus surface.
+        if child.name in {"__pycache__", "README.md", "generate_corpus.py"}:
+            continue
+        dst = tmp_path / child.name
+        if child.is_dir():
+            shutil.copytree(child, dst)
+        else:
+            shutil.copy2(child, dst)
     return tmp_path
 
 

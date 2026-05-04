@@ -25,10 +25,6 @@ echo "→ Mirroring agent-facing prompts"
 mkdir -p "$TS_SDK/prompts"
 rsync -a --delete --exclude='__pycache__' --exclude='__init__.py' "$PY/prompts/" "$TS_SDK/prompts/"
 
-echo "→ Mirroring init_examples scaffold"
-mkdir -p "$TS_SDK/init_examples"
-rsync -a --delete --exclude='__pycache__' --exclude='__init__.py' --exclude='*.pyc' "$PY/init_examples/" "$TS_SDK/init_examples/"
-
 echo "→ Mirror complete."
 echo ""
 echo "Manual port still required for:"

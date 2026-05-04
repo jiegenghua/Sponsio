@@ -3720,27 +3720,11 @@ def eval_cmd(
     is_flag=True,
     help="Skip the post-install demo offer.",
 )
-@click.option(
-    "--with-example",
-    is_flag=True,
-    help=(
-        "Drop a pre-tuned ``sponsio eval`` scaffold (sponsio.yaml + "
-        "6 labelled traces) into TARGET.  Orthogonal to the 4-axis "
-        "wizard; useful for smoke tests and demos."
-    ),
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Used by --with-example to overwrite existing scaffold files.",
-)
 def init(
     target: Path,
     plan_spec: str | None,
     apply_spec: str | None,
     no_demo: bool,
-    with_example: bool,
-    force: bool,
 ):
     """Interactive 4-axis onboarding wizard.
 
@@ -3767,8 +3751,7 @@ def init(
     Examples:\n
         sponsio init\n
         sponsio init --plan 'framework=langgraph;hosts=cursor;mode=observe'\n
-        sponsio init --apply 'framework=langgraph;hosts=cursor;mode=observe'\n
-        sponsio init . --with-example   # drop runnable scaffold
+        sponsio init --apply 'framework=langgraph;hosts=cursor;mode=observe'
     """
     from sponsio.init_wizard import (
         apply_commands,
@@ -3777,31 +3760,7 @@ def init(
         parse_picks,
         plan_commands,
         run_interactive,
-        run_with_example,
     )
-
-    # ``--with-example`` is orthogonal — drops a scaffold, doesn't
-    # touch the 4-axis flow.  Surface conflicts explicitly.
-    if with_example:
-        conflicting = [
-            name
-            for name, val in [
-                ("--plan", plan_spec),
-                ("--apply", apply_spec),
-                ("--no-demo", no_demo or None),
-            ]
-            if val is not None
-        ]
-        if conflicting:
-            raise click.UsageError(
-                f"--with-example is incompatible with: {', '.join(conflicting)}."
-            )
-        try:
-            run_with_example(target, force=force)
-        except click.ClickException as e:
-            click.secho(f"\n{e.message}", fg="red", err=True)
-            sys.exit(1)
-        return
 
     if plan_spec is not None and apply_spec is not None:
         raise click.UsageError("--plan and --apply are mutually exclusive")

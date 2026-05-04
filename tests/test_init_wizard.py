@@ -7,8 +7,8 @@ Covers four layers:
   TTY path and the IDE-agent-driven ``--apply`` path both share.
 * :func:`detect_environment` — runtime + framework + IDE-binary probe.
 * CLI invocation via :class:`click.testing.CliRunner` — ``--plan``,
-  ``--apply`` (with mocked subprocess), ``--with-example``,
-  mutually-exclusive flag handling.
+  ``--apply`` (with mocked subprocess), and mutually-exclusive flag
+  handling.
 """
 
 from __future__ import annotations
@@ -446,17 +446,3 @@ class TestCliMutualExclusion:
         )
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output
-
-    def test_with_example_conflicts_with_plan(self, tmp_path: Path):
-        runner = CliRunner()
-        result = runner.invoke(
-            init,
-            [
-                str(tmp_path),
-                "--with-example",
-                "--plan",
-                "framework=langgraph;mode=observe",
-            ],
-        )
-        assert result.exit_code != 0
-        assert "incompatible with" in result.output
