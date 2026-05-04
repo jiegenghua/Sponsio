@@ -120,14 +120,29 @@ class TestPlanCommands:
             ["npx", "sponsio", "onboard", ".", "--mode", "observe", "--force"],
         ]
 
-    def test_axis1_none_skips_onboard(self):
+    def test_axis1_none_still_runs_onboard_for_bare_loop_scaffold(self):
+        # ``framework=none`` is a real pick (bare function-calling
+        # loop, generic ``import sponsio`` wiring).  ``sponsio
+        # onboard`` handles it natively — writes a generic yaml +
+        # emits the ``guard.guard_before/after`` snippet — so plan
+        # MUST emit the onboard command.  Skipping it would leave
+        # bare-loop users with no scaffold, which is the opposite
+        # of what they came to the wizard for.
         cmds = plan_commands(InitPicks(framework="none", mode="observe"))
+        assert cmds == [
+            ["sponsio", "onboard", ".", "--mode", "observe", "--force"],
+        ]
+
+    def test_empty_framework_string_skips_onboard(self):
+        # The truly-empty case (no framework axis answered at all)
+        # is the one path that omits onboard.
+        cmds = plan_commands(InitPicks(framework="", mode="observe"))
         assert cmds == []
 
     def test_full_level_emits_host_install(self):
         cmds = plan_commands(
             InitPicks(
-                framework="none",
+                framework="",
                 ide_levels={"claude-code": "full", "cursor": "full"},
                 mode="enforce",
             )
@@ -149,7 +164,7 @@ class TestPlanCommands:
         # would also install hooks the user explicitly declined.
         cmds = plan_commands(
             InitPicks(
-                framework="none",
+                framework="",
                 ide_levels={"cursor": "skill", "codex": "skill"},
                 mode="observe",
             )
@@ -165,7 +180,7 @@ class TestPlanCommands:
         # claude-code: ``host install --with-skill`` covers it.
         cmds = plan_commands(
             InitPicks(
-                framework="none",
+                framework="",
                 ide_levels={"claude-code": "full", "cursor": "skill"},
                 mode="observe",
             )
@@ -178,7 +193,7 @@ class TestPlanCommands:
     def test_unknown_ide_filtered_silently(self):
         cmds = plan_commands(
             InitPicks(
-                framework="none",
+                framework="",
                 ide_levels={"claude-code": "full", "definitely-not-a-host": "full"},
                 mode="observe",
             )
@@ -346,10 +361,13 @@ class TestCliPlan:
         )
 
     def test_plan_with_empty_picks_says_so(self, tmp_path: Path):
+        # ``framework=`` (empty) AND no IDE picks → no commands.
+        # ``framework=none`` is no longer "empty" — it's a real
+        # bare-loop integrate pick that still emits onboard.
         runner = CliRunner()
         result = runner.invoke(
             init,
-            [str(tmp_path), "--plan", "framework=none;mode=observe"],
+            [str(tmp_path), "--plan", "framework=;mode=observe"],
         )
         assert result.exit_code == 0, result.output
         assert "Nothing to do" in result.output

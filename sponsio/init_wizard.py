@@ -126,9 +126,14 @@ class InitPicks:
       1. ``framework`` — wrap the agent code in this repo (single)
       2. ``ide_levels`` — per-IDE Sponsio level (multi, single-pick each)
       3. ``mode`` — observe vs enforce (single)
+
+    Default ``framework=""`` distinguishes "axis 1 not answered" (skip
+    onboard) from explicit ``framework="none"`` (bare-loop integrate,
+    onboard still runs and emits the generic
+    ``import sponsio / guard.guard_before/after`` snippet).
     """
 
-    framework: str = "none"
+    framework: str = ""
     ide_levels: dict[str, str] = field(default_factory=dict)
     mode: str = "observe"
 
@@ -173,7 +178,10 @@ def parse_picks(spec: str) -> InitPicks:
         key = key.strip().lower()
         val = val.strip()
         if key == "framework":
-            p.framework = val or "none"
+            # Explicit empty (``framework=``) means "axis 1 not
+            # answered" — skip onboard.  Distinct from explicit
+            # ``framework=none`` which is the bare-loop pick.
+            p.framework = val
         elif key == "ides":
             for entry in val.split(","):
                 entry = entry.strip()
@@ -292,7 +300,16 @@ def plan_commands(
     """
     cmds: list[list[str]] = []
 
-    if picks.framework and picks.framework != "none":
+    if picks.framework:
+        # ``framework=none`` is a real pick (bare function-calling
+        # loop, no framework wrap), NOT a "skip the onboard step"
+        # sentinel.  ``sponsio onboard`` handles it natively: writes
+        # a generic ``sponsio.yaml`` + emits the ``import sponsio /
+        # guard.guard_before/after`` snippet so the user has
+        # something concrete to splice in.  Skipping onboard for
+        # ``none`` would leave bare-loop users stranded with no
+        # scaffold to start from — which is exactly what they
+        # came to ``sponsio init`` for.
         if ts_project:
             cmds.append(
                 ["npx", "sponsio", "onboard", ".", "--mode", picks.mode, "--force"]
@@ -546,8 +563,15 @@ def run_interactive(env: Environment) -> InitPicks:
     _step("Framework wrap")
     fw_choices = []
     for fw in SUPPORTED_FRAMEWORKS:
+        # ``none`` is a real pick — bare function-calling loop,
+        # generic ``guard.guard_before/after`` wiring.  Label it
+        # clearly so users don't mistake it for "skip integration".
+        if fw == "none":
+            label = "none — bare loop (generic guard.guard_before/after)"
+        else:
+            label = fw
         suffix = "  ← detected" if fw == env.framework else ""
-        fw_choices.append((fw, f"{fw}{suffix}"))
+        fw_choices.append((fw, f"{label}{suffix}"))
     framework = _select(
         "Pick framework wrap",
         fw_choices,
