@@ -312,8 +312,8 @@ def plan_commands(
         # scaffold to start from — which is exactly what they
         # came to ``sponsio init`` for.
         if ts_project:
-            # The TS CLI ships in ``@sponsio/scan-ts`` whose ``bin``
-            # entry is called ``sponsio``.  ``npx sponsio onboard``
+            # The TS CLI ships in ``@sponsio/sdk`` (its ``bin`` field
+            # exposes the ``sponsio`` binary).  ``npx sponsio onboard``
             # alone fails because npm tries to fetch a top-level
             # package literally named ``sponsio`` (which doesn't
             # exist on the registry — that's the Python pip name).
@@ -323,15 +323,21 @@ def plan_commands(
             # the dep in package.json so subsequent runs are
             # cached.
             #
-            # Skip the install when scan-ts is ALREADY in
+            # Skip the install when ``@sponsio/sdk`` is ALREADY in
             # node_modules — running ``npm install --save-dev``
             # against an existing entry would overwrite ``npm
             # link``-ed development versions with the published
             # release, silently undoing the user's local-source
             # workflow.
+            #
+            # Until 2026-05 the bin lived in ``@sponsio/scan-ts``;
+            # that package is now a deprecation shim that
+            # forwards to ``@sponsio/sdk``.  We always emit the
+            # install for the new name; the shim handles the
+            # legacy install case at runtime.
             if not scan_ts_already_installed:
                 cmds.append(
-                    ["npm", "install", "--save-dev", "@sponsio/scan-ts"]
+                    ["npm", "install", "--save-dev", "@sponsio/sdk"]
                 )
             # Older published versions of ``@sponsio/scan-ts``
             # (alpha.3 and below) didn't accept ``--mode`` on the

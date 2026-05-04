@@ -176,9 +176,10 @@ export async function runValidateCli(argv: string[]): Promise<void> {
   const hasWarnings =
     result.skipped.length > 0 ||
     result.unparseableNl.length > 0 ||
-    // Sto contracts without a judge: block are silent no-ops at runtime —
-    // surfaced on the text path and counted as a strict-mode warning.
-    (result.stoContracts > 0 && !result.judgeConfigured);
+    // Sto contracts in OSS are Cloud-only — `pip install sponsio[cloud]`
+    // activates the judge pipeline. Without Cloud, OSS rejects them at
+    // load time. Surface as a strict-mode warning so CI catches it.
+    result.stoContracts > 0;
   if (args.strict && hasWarnings) process.exit(2);
 }
 
@@ -188,9 +189,11 @@ function renderText(r: ValidateResult): string {
   lines.push(`  agent:            ${r.agent}`);
   lines.push(`  runtime.mode:     ${r.mode ?? "(unset — falls to observe)"}`);
   lines.push(`  det contracts:    ${r.detContracts}`);
-  lines.push(`  sto contracts:    ${r.stoContracts}`);
   lines.push(
-    `  judge configured: ${r.judgeConfigured ? "yes" : "no" + (r.stoContracts > 0 ? " (!! sto contracts will be no-ops)" : "")}`,
+    `  sto contracts:    ${r.stoContracts}${r.stoContracts > 0 ? " (!! Sponsio Cloud only — `pip install sponsio[cloud]`)" : ""}`,
+  );
+  lines.push(
+    `  judge configured: ${r.judgeConfigured ? "yes (Cloud only)" : "no"}`,
   );
   if (r.unparseableNl.length) {
     lines.push("");

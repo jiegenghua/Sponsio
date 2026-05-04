@@ -3288,7 +3288,7 @@ def export_sessions_cmd(
 
     Reads ``~/.sponsio/sessions/<agent_id>/*.jsonl``, converts each
     ``MonitorEvent`` row into an OTLP span using the Sponsio Semantic
-    Conventions (see ``docs/observability.md``), and writes them
+    Conventions (see ``docs/reference/observability.md``), and writes them
     either to a local OTLP-JSONL file or POSTs them to an OTLP/HTTP
     collector (Datadog, Honeycomb, Grafana Cloud, the Sponsio-native
     dashboard, …).
@@ -3797,13 +3797,20 @@ def init(
 
     target_dir = target if target.is_dir() or not target.suffix else target.parent
     env = detect_environment(target_dir)
-    # Detect a pre-existing ``@sponsio/scan-ts`` install (via ``npm
+    # Detect a pre-existing ``@sponsio/sdk`` install (via ``npm
     # install`` OR ``npm link``) so we can skip the redundant
     # install step in plan.  Skipping is critical for ``npm link``
     # workflows — running ``npm install --save-dev`` against a
     # linked package overwrites the symlink with the published
     # release, silently undoing the user's local-source testing.
-    _scan_ts_installed = (target_dir / "node_modules" / "@sponsio" / "scan-ts").exists()
+    # The legacy ``@sponsio/scan-ts`` package is now a deprecation
+    # shim that re-exports ``@sponsio/sdk``'s CLI; counting it as
+    # "installed" lets users on the old name finish ``sponsio
+    # init`` without an extra install round-trip.
+    _scan_ts_installed = (
+        (target_dir / "node_modules" / "@sponsio" / "sdk").exists()
+        or (target_dir / "node_modules" / "@sponsio" / "scan-ts").exists()
+    )
 
     # ---- non-TTY paths: --plan / --apply ----
     if plan_spec is not None:

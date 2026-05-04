@@ -45,21 +45,12 @@ import {
 } from "./core/spans.js";
 import { renderSession } from "./render/session-view.js";
 import type { DetFormula } from "./core/patterns.js";
-import {
-  createJudge,
-  LlmJudgeEvaluator,
-  ToneEvaluator,
-  RelevanceEvaluator,
-  SemanticPiiFreeEvaluator,
-  HallucinationFreeEvaluator,
-  ScopeRespectEvaluator,
-  MetricIntegrityEvaluator,
-  InjectionFreeEvaluator,
-  type JudgeClient,
-  type JudgeConfig,
-  type StoContract,
-  type StoContextSnapshot,
-  type StoEvaluator,
+import type {
+  JudgeClient,
+  JudgeConfig,
+  StoContract,
+  StoContextSnapshot,
+  StoEvaluator,
 } from "./core/sto.js";
 
 // Re-exports
@@ -82,18 +73,7 @@ export type {
   SessionLoggerOptions,
 } from "./core/session-log.js";
 export { contract, ContractBuilder } from "./contract.js";
-export {
-  createJudge,
-  LlmJudgeEvaluator,
-  ToneEvaluator,
-  RelevanceEvaluator,
-  SemanticPiiFreeEvaluator,
-  HallucinationFreeEvaluator,
-  ScopeRespectEvaluator,
-  MetricIntegrityEvaluator,
-  InjectionFreeEvaluator,
-  parseScore,
-} from "./core/sto.js";
+export { parseScore, CloudFeatureError } from "./core/sto.js";
 export type {
   StoEvaluator,
   StoContract,
@@ -181,10 +161,12 @@ export interface CheckResult {
    */
   detViolations: DetViolation[];
   /**
-   * Sto-pipeline violations — populated by ``guardAfter`` when
-   * stochastic contracts (e.g. ``tone``, ``llm_judge``) are declared
-   * in the yaml and a ``judge:`` block is configured. Empty on a
-   * clean pass or when no sto contracts exist.
+   * Sto-pipeline violations — Sponsio Cloud only. Always ``[]`` on
+   * the OSS TS SDK (the ctor rejects yaml sto contracts at load time
+   * and never builds a judge). Cloud subclasses populate this with
+   * results from stochastic contracts (``tone`` / ``llm_judge`` /
+   * ``injection_free`` / …). Kept on the schema so dashboards /
+   * session loggers branch consistently across both surfaces.
    */
   stoViolations: DetViolation[];
 }
@@ -237,11 +219,13 @@ export interface SponsoOptions {
   sessionLogBaseDir?: string;
 
   /**
-   * Judge config for the sto pipeline. Either a plain config object
-   * (provider / model / apiKey / baseUrl / fallbackMode) or a
-   * pre-built ``JudgeClient``. Falls through to the yaml ``judge:``
-   * block if the ctor arg is omitted. When no sto contracts exist,
-   * the judge is never contacted.
+   * Judge config for the sto pipeline. **Sponsio Cloud only.**
+   * Either a plain config object (provider / model / apiKey /
+   * baseUrl / fallbackMode) or a pre-built ``JudgeClient``. The OSS
+   * TS SDK accepts the option for shared-yaml compatibility but
+   * never constructs a judge — passing this without Cloud
+   * installed surfaces a warning via the skipped-items path and
+   * the field is otherwise ignored.
    */
   judge?: JudgeConfig | JudgeClient;
 }
@@ -250,9 +234,10 @@ export class Sponsio {
   readonly agentId: string;
   readonly mode: SponsoMode;
   private _contracts: DetFormula[];
+  // Sto state. Always empty/null in OSS — the constructor rejects yaml
+  // sto contracts and inline `judge:` at config load. Kept as
+  // schema-stable surface for Cloud-side composition / wrapping.
   private _stoContracts: StoContract[];
-  private _judge: JudgeClient | null;
-  private _judgeFallback: "allow" | "deny" | "skip";
   private _stoContext: StoContextSnapshot;
   private _trace: Valuation[];
   private _state: GroundingState;
@@ -268,8 +253,6 @@ export class Sponsio {
     this._violations = [];
     this._contracts = [];
     this._stoContracts = [];
-    this._judge = null;
-    this._judgeFallback = "allow";
     this._stoContext = {};
 
     // ── Gather contracts + yaml-derived settings ────────────────────
@@ -308,25 +291,23 @@ export class Sponsio {
 
     // ── Sto pipeline is a Sponsio Cloud feature ──────────────────────
     // The managed LLM-judge catalog (`tone` / `relevance` / `llm_judge`
-    // …) and the judge client live in `sponsio[cloud]`. The OSS
-    // engine logs-and-skips any yaml sto contracts and any inline
-    // `judge:` option, never constructs an evaluator, never contacts
-    // an LLM. The API surface (`guardAfter`, `setContext`, `judge`
-    // ctor option) is preserved so a shared yaml between Python+Cloud
-    // and TS+OSS doesn't refuse to load.
-    this._judge = null;
-    this._judgeFallback = "allow";
+    // …) and the judge client live in the proprietary `sponsio_cloud`
+    // package. The OSS engine logs-and-skips any yaml sto contracts
+    // and any inline `judge:` option, never constructs an evaluator,
+    // never contacts an LLM. The API surface (`guardAfter`,
+    // `setContext`, `judge` ctor option) is preserved so a shared yaml
+    // between Cloud and OSS-TS doesn't refuse to load.
     for (const spec of yamlStoSpecs) {
       yamlSkipped.push({
         kind: "sto-contract",
-        detail: `${spec.desc} (sto pipeline is a Sponsio Cloud feature)`,
+        detail: `${spec.desc} (sto pipeline is a Sponsio Cloud feature; pip install sponsio[cloud])`,
       });
     }
     if (options.judge) {
       yamlSkipped.push({
         kind: "sto-contract",
         detail:
-          "`judge:` option ignored (sto pipeline is a Sponsio Cloud feature; install sponsio[cloud])",
+          "`judge:` option ignored (sto pipeline is a Sponsio Cloud feature; pip install sponsio[cloud])",
       });
     }
     // Reference yamlJudge so unused-var lints don't fire — the field
@@ -542,164 +523,29 @@ export class Sponsio {
   }
 
   /**
-   * Record tool output after execution and run the sto pipeline.
+   * Record tool output after execution.
    *
-   * Returns a ``CheckResult`` whose ``stoViolations`` carries any
-   * stochastic rule failures (``tone`` / ``llm_judge``). When no sto
-   * contracts are declared the method returns synchronously in
-   * effect (the ``Promise`` resolves on the microtask queue) and
-   * never contacts the judge LLM.
+   * The OSS engine ships **no sto pipeline** — Cloud's stochastic
+   * (LLM-judged) atoms are what populate ``stoViolations``. With no
+   * Cloud installed and no sto contracts loaded (sto entries in yaml
+   * are rejected at config load), ``stoViolations`` is always
+   * ``[]`` and ``allowed: true``.
    *
-   * In **observe mode** violations are logged but the method still
-   * reports ``allowed: true``. In **enforce mode** the first sto
-   * violation flips ``blocked: true`` — but the tool output has
-   * already executed, so the caller is responsible for routing the
-   * result (retry with feedback, redirect to safe, etc.).
+   * The method stays ``async`` for API parity with Cloud's override —
+   * a Cloud-side subclass / wrapper can run the judge pipeline and
+   * surface real ``stoViolations`` without changing the call site.
+   * In **enforce mode** Cloud subclasses flip ``blocked: true`` on
+   * the first sto violation; the tool output has already executed,
+   * so the caller is responsible for routing the result (retry with
+   * feedback, redirect to safe, etc.).
    */
   async guardAfter(
-    toolName: string,
-    output: string = "",
+    _toolName: string,
+    _output: string = "",
   ): Promise<CheckResult> {
-    if (this._stoContracts.length === 0) {
-      return emptyAllow();
-    }
-
-    const stoViolations: DetViolation[] = [];
-    const flatMessages: string[] = [];
-
-    for (const sto of this._stoContracts) {
-      try {
-        const result = await sto.evaluator.evaluate({
-          toolName,
-          output,
-          context: this._stoContext,
-        });
-        if (result.passed) {
-          this._logSto(sto.desc, "allowed", result.score, result.evidence);
-          continue;
-        }
-        const verb = this.mode === "observe" ? "WOULD-BLOCK" : "BLOCKED";
-        const msg =
-          `${verb}: ${this.agentId}.${toolName} — sto constraint ` +
-          `violated: ${sto.desc} (score=${result.score.toFixed(2)})`;
-        // Sto outcomes default to retry-style phrasing — the model
-        // is being asked to regenerate addressing the failed
-        // property, not to abandon the action altogether. retryHint
-        // carries the evaluator's suggestion when available.
-        stoViolations.push({
-          desc: sto.desc,
-          message: msg,
-          ruleId: sto.desc,
-          agentMsg:
-            `Your output failed the \`${sto.desc}\` check ` +
-            `(score=${result.score.toFixed(2)}). Regenerate addressing the issue.`,
-          retryHint: result.evidence || undefined,
-        });
-        flatMessages.push(msg);
-        this._logSto(
-          sto.desc,
-          this.mode === "observe" ? "observed" : "blocked",
-          result.score,
-          result.evidence,
-        );
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        const handling = this._judgeFallback;
-        if (handling === "skip") {
-          console.warn(
-            `[sponsio] sto ${sto.desc}: judge error (${errMsg}) — skipping`,
-          );
-          continue;
-        }
-        const verb = this.mode === "observe" ? "WOULD-BLOCK" : "BLOCKED";
-        if (handling === "deny") {
-          const msg =
-            `${verb}: ${this.agentId}.${toolName} — sto judge error ` +
-            `(${errMsg}); fallback_mode=deny`;
-          stoViolations.push({ desc: sto.desc, message: msg });
-          flatMessages.push(msg);
-          this._logSto(
-            sto.desc,
-            this.mode === "observe" ? "observed" : "blocked",
-            undefined,
-            `judge-error: ${errMsg}`,
-          );
-        } else {
-          // allow (default) — log a pass so the operator can see the
-          // judge was exercised, but do not create a violation.
-          console.warn(
-            `[sponsio] sto ${sto.desc}: judge error (${errMsg}) — allowing`,
-          );
-          this._logSto(
-            sto.desc,
-            "allowed",
-            undefined,
-            `judge-error-allowed: ${errMsg}`,
-          );
-        }
-      }
-    }
-
-    if (stoViolations.length === 0) {
-      return emptyAllow();
-    }
-
-    this._violations.push(...flatMessages);
-
-    if (this.mode === "enforce") {
-      return {
-        blocked: true,
-        allowed: false,
-        message: flatMessages[0],
-        violations: flatMessages,
-        detViolations: [],
-        stoViolations,
-      };
-    }
-
-    return {
-      blocked: false,
-      allowed: true,
-      message: "",
-      violations: [],
-      detViolations: [],
-      stoViolations,
-    };
-  }
-
-  private _logSto(
-    desc: string,
-    action: "allowed" | "blocked" | "observed",
-    score: number | undefined,
-    evidence: string | undefined,
-  ): void {
-    if (!this._logger) return;
-    const record: {
-      ts: number;
-      agent_id: string;
-      action: "allowed" | "blocked" | "observed";
-      pipeline: "sto";
-      constraint: string;
-      result: {
-        action: "allowed" | "blocked" | "observed";
-        message: string;
-      };
-      sto?: { score: number; evidence?: string };
-    } = {
-      ts: Date.now() / 1000,
-      agent_id: this.agentId,
-      action,
-      pipeline: "sto",
-      constraint: desc,
-      result: {
-        action,
-        message: evidence ?? "",
-      },
-    };
-    if (score !== undefined) {
-      record.sto = evidence ? { score, evidence } : { score };
-    }
-    this._logger.log(record);
+    // OSS is det-only — sto pipeline lives in Sponsio Cloud. Always
+    // return clean-pass; Cloud subclasses override.
+    return emptyAllow();
   }
 
   /**
@@ -716,11 +562,15 @@ export class Sponsio {
   }
 
   /**
-   * Stash per-turn context for the sto pipeline. Atoms that need
-   * grounding — ``relevance`` (``query``), ``hallucination_free``
-   * (``source``), ``scope_respect`` (``scope`` override),
-   * ``metric_integrity`` (``history``) — read from this snapshot on
-   * the next ``guardAfter`` call.
+   * Stash per-turn context for the sto pipeline.
+   *
+   * Sponsio Cloud only — atoms that need grounding (``relevance`` →
+   * ``query``, ``hallucination_free`` → ``source``, ``scope_respect``
+   * → ``scope`` override, ``metric_integrity`` → ``history``) read
+   * from this snapshot on the next ``guardAfter`` call. The OSS
+   * engine accepts the call as a no-op so shared agent code can
+   * stay framework-neutral; without Cloud, the snapshot is never
+   * consumed.
    *
    * Merges with any previously-set context; pass ``{ query: undefined }``
    * to explicitly clear a field. ``reset()`` clears the whole snapshot.

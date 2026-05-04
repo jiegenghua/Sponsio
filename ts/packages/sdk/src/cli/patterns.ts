@@ -1,6 +1,8 @@
 /**
- * ``sponsio patterns`` — browse the deterministic pattern
- * library + built-in sto atoms. Parity with Python's ``sponsio patterns``.
+ * ``sponsio patterns`` — browse the deterministic pattern library.
+ * Parity with Python's ``sponsio patterns`` (det only on the OSS
+ * engine; LLM-judged stochastic atoms — ``tone`` / ``injection_free``
+ * / ``semantic_pii_free`` / ... — live in Sponsio Cloud).
  *
  * Output is grouped the same way the main README tabulates them so
  * users can eyeball what's available without clicking through to
@@ -19,8 +21,7 @@ interface PatternRow {
     | "Exclusion"
     | "Argument / Path"
     | "Agentic Security"
-    | "Resource"
-    | "Sto";
+    | "Resource";
   nlExample: string;
 }
 
@@ -68,15 +69,11 @@ const ROWS: PatternRow[] = [
   { name: "token_budget", category: "Resource", nlExample: "total token budget 200k" },
   { name: "delegation_depth_limit", category: "Resource", nlExample: "max delegation depth 3" },
 
-  // Sto (built into the TS SDK)
-  { name: "tone",               category: "Sto", nlExample: "E: { pattern: tone, args: [empathetic], threshold: 0.7 }" },
-  { name: "llm_judge",          category: "Sto", nlExample: "E: { pattern: llm_judge, prompt_override: '…', threshold: 0.8 }" },
-  { name: "relevance",          category: "Sto", nlExample: "needs guard.setContext({ query })" },
-  { name: "semantic_pii_free",  category: "Sto", nlExample: "catches paraphrased PII that regex misses" },
-  { name: "hallucination_free", category: "Sto", nlExample: "needs guard.setContext({ source })" },
-  { name: "scope_respect",      category: "Sto", nlExample: "E: { pattern: scope_respect, args: ['only customer billing'] }" },
-  { name: "metric_integrity",   category: "Sto", nlExample: "catches silently-altered numbers / flipped pass-fails" },
-  { name: "injection_free",     category: "Sto", nlExample: "detects prompt-injection payloads in tool output" },
+  // LLM-judged stochastic atoms (`tone` / `llm_judge` / `relevance` /
+  // `semantic_pii_free` / `hallucination_free` / `scope_respect` /
+  // `metric_integrity` / `injection_free`) ship in Sponsio Cloud
+  // (`pip install sponsio[cloud]`). The OSS TS SDK lists det only,
+  // matching Python's `sponsio patterns`.
 ];
 
 interface PatternsArgs {
@@ -87,15 +84,20 @@ interface PatternsArgs {
 
 const HELP =
   [
-    "sponsio patterns — list det patterns + sto atoms",
+    "sponsio patterns — list deterministic pattern templates",
     "",
     "USAGE:",
     "  sponsio patterns [options]",
     "",
     "OPTIONS:",
-    "      --category <name>  Filter by category (Safety, Compliance, Sto …)",
+    "      --category <name>  Filter by category (Safety, Compliance, Operational …)",
     "      --format <f>       'text' (default) or 'json'",
     "  -h, --help             Show this help",
+    "",
+    "NOTE:",
+    "  LLM-judged stochastic atoms (tone, injection_free, semantic_pii_free, …)",
+    "  ship in Sponsio Cloud — `pip install sponsio[cloud]`. The OSS engine is",
+    "  det-only, matching Python's `sponsio patterns`.",
   ].join("\n") + "\n";
 
 function parseArgs(argv: string[]): PatternsArgs {

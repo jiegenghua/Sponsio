@@ -45,22 +45,32 @@
       "default": "./dist/integrations/langchain.js"
     }
   },
+  "bin": {
+    "sponsio": "bin/sponsio.cjs"
+  },
   "files": [
     "dist/",
     "!dist/__tests__/**",
+    "bin/",
     "contracts/",
+    "prompts/",
+    "skills/",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.cli.json && node -e \"require('fs').writeFileSync('dist/cli/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\"",
     "test": "node --test dist/__tests__/*.test.js",
     "test:src": "npx tsx src/__tests__/core.test.ts",
     "test:parity": "npx tsx src/__tests__/parity.test.ts && npx tsx src/__tests__/parity.scenarios.test.ts"
   },
   "dependencies": {
-    "yaml": "^2.7.0"
+    "yaml": "^2.7.0",
+    "fast-glob": "^3.3.0",
+    "js-yaml": "^4.1.0",
+    "ts-morph": "^22.0.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.5",
     "@types/node": "^25.6.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0"

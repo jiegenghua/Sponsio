@@ -21,9 +21,56 @@ A JSON object from `sponsio onboard --emit-context`:
   "existing_yaml": "<current sponsio.yaml content if any>",
   "policy_docs": [
     {"path": "security.md", "content": "..."}
-  ]
+  ],
+  "pre_existing_contracts": [
+    {"pattern": "...", "args": [...], "source": "..."}
+  ],
+  "health": "ok | tools_only | empty",
+  "health_detail": "..."
 }
 ```
+
+## Hard rules (apply before authoring anything)
+
+- **Deterministic atoms only.**  Use ONLY pattern names from the
+  *Pattern vocabulary* section below.  Do NOT propose stochastic
+  atoms (`injection_free`, `pii_free`, `semantic_pii`, `faithful`,
+  `harmful`, `tone_*`, `relevant`, `metric_integrity`, etc.).
+  Sponsio OSS does not load them; the YAML will fail to parse.
+
+- **Dedupe against `pre_existing_contracts`.**  The CLI already
+  emitted starter rules (likely `idempotent`, generic
+  `arg_blacklist`, `tool_allowlist`, `loop_detection`).  Skip any
+  `(pattern, primary_arg)` already present.  Add only what's new.
+
+- **Pack rules go in `include:`, not inline.**  Every entry in
+  `auto_selected_packs` belongs in the agent's `include:` block.
+  Do NOT inline what the pack already covers — duplicate noise
+  the user has to clean up.
+
+- **Source tagging.**  Every contract YOU author carries
+  `source: agent-extracted` so future `sponsio refresh` runs can
+  distinguish your additions from pack rules and from
+  CLI-emitted starter rules.
+
+- **One contract per concrete failure mode.**  Plain-English
+  `desc:` so the user can review by reading.  No omnibus rules.
+
+- **Strip `extractor:` / `judge:` blocks.**  Those drive Sponsio
+  Cloud features (parse-time / runtime LLM judges) and add noise
+  to the OSS file unless the user explicitly asks for them.
+
+- **Placeholders only as last resort.**  Use `___AGENT_ID___`,
+  `___WORKSPACE___`, `___ALLOWED_HOST___` etc. ONLY when no
+  concrete value can be inferred from `policy_docs`,
+  `tool_inventory`, or the threat model.  Concrete values from
+  the inputs always win — placeholders force the user to fill
+  in by hand, so they're a tax on the user, not a default.
+
+- **`health == "empty"` means stop.**  When the CLI flagged the
+  inputs as empty (no framework, no tools, no policy), don't
+  fabricate rules.  Tell the user the inputs were empty and ask
+  what they want — usually it means the wrong path was scanned.
 
 ## What you produce
 

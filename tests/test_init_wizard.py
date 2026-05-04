@@ -114,7 +114,7 @@ class TestPlanCommands:
     def test_axis1_ts_observe_installs_then_runs_onboard(self):
         # ``npx sponsio onboard`` alone errors with "404 sponsio not
         # found on registry" because the npm package name is
-        # ``@sponsio/scan-ts`` (whose bin is named ``sponsio``).
+        # ``@sponsio/sdk`` (whose bin is named ``sponsio``).
         # Plan must install the scoped pkg first so the binary lands
         # in node_modules/.bin where npx can resolve it locally.
         # ``observe`` is the scanner's default mode — no flip needed.
@@ -123,12 +123,12 @@ class TestPlanCommands:
             ts_project=True,
         )
         assert cmds == [
-            ["npm", "install", "--save-dev", "@sponsio/scan-ts"],
+            ["npm", "install", "--save-dev", "@sponsio/sdk"],
             ["npx", "sponsio", "onboard", ".", "--force"],
         ]
 
     def test_axis1_ts_enforce_appends_mode_flip(self):
-        # ``@sponsio/scan-ts@0.1.0-alpha.3`` doesn't accept ``--mode``
+        # ``@sponsio/sdk@0.1.0-alpha.3`` doesn't accept ``--mode``
         # on the ``onboard`` subcommand.  Plan writes the yaml at
         # the scanner's default ``observe`` mode then flips to
         # enforce via the standalone ``sponsio mode`` subcommand
@@ -139,7 +139,7 @@ class TestPlanCommands:
             ts_project=True,
         )
         assert cmds == [
-            ["npm", "install", "--save-dev", "@sponsio/scan-ts"],
+            ["npm", "install", "--save-dev", "@sponsio/sdk"],
             ["npx", "sponsio", "onboard", ".", "--force"],
             ["npx", "sponsio", "mode", "enforce"],
         ]

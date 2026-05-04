@@ -1,21 +1,38 @@
 /**
- * Stub for the sto (stochastic / LLM-judge) pipeline.
+ * OSS↔Cloud schema surface for the sto (stochastic / LLM-judge) pipeline.
  *
- * The real evaluator catalog (``tone`` / ``relevance`` / ``llm_judge`` /
- * ``hallucination_free`` …) and the OpenAI-compatible judge client are
- * Sponsio Cloud features, not bundled with the OSS engine. The OSS
- * ``Sponsio`` constructor logs-and-skips sto contracts at load time
- * with a one-time warning — matching Python's
- * ``sponsio.patterns.sto_catalog`` behaviour.
+ * The TS SDK is **det-only**, mirroring Sponsio Python's OSS engine.
+ * The managed evaluator catalog (``tone`` / ``relevance`` / ``llm_judge`` /
+ * ``hallucination_free`` …), the OpenAI-compatible judge client, and the
+ * per-evaluator scoring code are Sponsio Cloud features. They live in
+ * the proprietary ``sponsio_cloud.sto.*`` Python package; a Cloud-TS
+ * package will mirror them later.
  *
- * This file exists so that:
- *   - imports in ``index.ts`` resolve cleanly
- *   - downstream consumers depending on the type names
- *     (``StoEvaluator``, ``JudgeClient``, …) compile against the
- *     same surface
- *   - any code path that *constructs* an evaluator or *builds* a
- *     judge fails loudly with ``CloudFeatureError`` rather than
- *     silently pretending to enforce
+ * What this file ships in OSS:
+ *
+ *   - **Type contracts** — ``StoEvaluator`` / ``StoResult`` / ``StoInput`` /
+ *     ``StoContract`` / ``JudgeClient`` / ``JudgeConfig`` /
+ *     ``StoContextSnapshot``. Cloud subclasses / OSS callers consuming the
+ *     schema (session loggers, dashboards) reference these.
+ *   - ``CloudFeatureError`` — the exception any Cloud-only code path
+ *     raises when reached on the OSS engine.
+ *   - ``parseScore`` — a pure utility that converts a 0-1 score from a
+ *     judge response. Kept because it never contacts an LLM.
+ *
+ * What this file does NOT ship in OSS (deleted alongside the Python
+ * mirrors — ``RetryWithConstraint`` / ``RedirectToSafe`` /
+ * ``FeedbackGenerator`` / the per-atom evaluator stubs):
+ *
+ *   - ``createJudge`` — judge construction
+ *   - ``LlmJudgeEvaluator`` / ``ToneEvaluator`` / ``RelevanceEvaluator``
+ *     / ``SemanticPiiFreeEvaluator`` / ``HallucinationFreeEvaluator``
+ *     / ``ScopeRespectEvaluator`` / ``MetricIntegrityEvaluator``
+ *     / ``InjectionFreeEvaluator``
+ *
+ * The Sponsio constructor rejects yaml-declared sto contracts and any
+ * ``judge:`` option at config-load time, so OSS callers never reach a
+ * code path that would have built one of these. Cloud installs will
+ * supply real implementations of the same Protocol surface.
  *
  * Operators who want the sto pipeline:
  *
@@ -86,18 +103,6 @@ export class CloudFeatureError extends Error {
   }
 }
 
-// ----- createJudge: stub ---------------------------------------------
-
-/**
- * Stub. The OSS engine does not ship a managed judge client; calling
- * this throws ``CloudFeatureError``. The OSS ``Sponsio`` constructor
- * never reaches this — yaml ``judge:`` blocks and ``options.judge``
- * are routed through the ``skipped`` warning path instead.
- */
-export function createJudge(_config: JudgeConfig): JudgeClient {
-  throw new CloudFeatureError("createJudge()");
-}
-
 // ----- parseScore: pure utility, kept --------------------------------
 
 /**
@@ -130,93 +135,4 @@ function clamp01(n: number): number {
   if (n < 0) return 0;
   if (n > 1) return 1;
   return n;
-}
-
-// ----- Evaluator class stubs -----------------------------------------
-// Each class preserves the 3 public ``StoEvaluator`` fields that
-// callers may inspect (``atom`` / ``desc`` / ``threshold``), but
-// ``evaluate()`` rejects with ``CloudFeatureError``. The OSS Sponsio
-// ctor never instantiates these — yaml sto specs flow through the
-// ``skipped`` path before any evaluator is built.
-
-abstract class _StubEvaluator implements StoEvaluator {
-  abstract readonly atom: string;
-  constructor(
-    readonly desc: string,
-    readonly threshold: number,
-  ) {}
-  evaluate(_input: StoInput): Promise<StoResult> {
-    return Promise.reject(new CloudFeatureError(`${this.atom} evaluator`));
-  }
-}
-
-export class LlmJudgeEvaluator extends _StubEvaluator {
-  readonly atom = "llm_judge";
-  constructor(
-    desc: string,
-    threshold: number,
-    _judge: JudgeClient,
-    _promptTemplate: string,
-  ) {
-    super(desc, threshold);
-  }
-}
-
-export class ToneEvaluator extends _StubEvaluator {
-  readonly atom = "tone";
-  constructor(
-    desc: string,
-    threshold: number,
-    _judge: JudgeClient,
-    _targetTone: string,
-  ) {
-    super(desc, threshold);
-  }
-}
-
-export class RelevanceEvaluator extends _StubEvaluator {
-  readonly atom = "relevance";
-  constructor(desc: string, threshold: number, _judge: JudgeClient) {
-    super(desc, threshold);
-  }
-}
-
-export class SemanticPiiFreeEvaluator extends _StubEvaluator {
-  readonly atom = "semantic_pii_free";
-  constructor(desc: string, threshold: number, _judge: JudgeClient) {
-    super(desc, threshold);
-  }
-}
-
-export class HallucinationFreeEvaluator extends _StubEvaluator {
-  readonly atom = "hallucination_free";
-  constructor(desc: string, threshold: number, _judge: JudgeClient) {
-    super(desc, threshold);
-  }
-}
-
-export class ScopeRespectEvaluator extends _StubEvaluator {
-  readonly atom = "scope_respect";
-  constructor(
-    desc: string,
-    threshold: number,
-    _judge: JudgeClient,
-    _defaultScope: string,
-  ) {
-    super(desc, threshold);
-  }
-}
-
-export class MetricIntegrityEvaluator extends _StubEvaluator {
-  readonly atom = "metric_integrity";
-  constructor(desc: string, threshold: number, _judge: JudgeClient) {
-    super(desc, threshold);
-  }
-}
-
-export class InjectionFreeEvaluator extends _StubEvaluator {
-  readonly atom = "injection_free";
-  constructor(desc: string, threshold: number, _judge: JudgeClient) {
-    super(desc, threshold);
-  }
 }

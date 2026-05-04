@@ -79,10 +79,11 @@ export function wrapAgentsTools<T extends AgentsToolLike>(
       const output = await original(...args);
       const asStr =
         typeof output === "string" ? output : safeStringify(output);
-      // In enforce mode, sto violations surface here (tone, llm_judge,
-      // etc.). Propagate via a thrown Error so the Agents SDK routes it
-      // as a tool failure the model can see and react to — matches the
-      // pre-check block path above.
+      // OSS guardAfter is a no-op (sto pipeline is Sponsio Cloud only).
+      // Cloud subclasses surface tone / llm_judge / injection_free
+      // violations here; we propagate them via a thrown Error so the
+      // Agents SDK routes them as a tool failure the model can see and
+      // react to — matches the pre-check block path above.
       const afterCheck = await guard.guardAfter(tool.name, asStr);
       if (afterCheck.blocked) {
         throw new Error(afterCheck.message);
