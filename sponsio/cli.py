@@ -4995,6 +4995,17 @@ def plugin_init(root: Path | None, force: bool, no_smoke_test: bool):
     siblings of ``_host/`` and can be created by hand or via
     ``sponsio plugin scan``.
     """
+    click.secho(
+        "⚠  `sponsio plugin init` is deprecated — it writes the legacy "
+        "`_host/` bucket that per-host routing now supersedes.\n"
+        "   For new installs, use `sponsio host install <name>` "
+        "instead (claude-code / cursor / openclaw).\n"
+        "   To consolidate an existing `_host/` into per-host buckets, "
+        "use `sponsio host migrate <name>`.",
+        fg="yellow",
+        err=True,
+    )
+
     if root is None:
         env = os.environ.get("SPONSIO_PLUGIN_ROOT")
         root = Path(env).expanduser() if env else Path.home() / ".sponsio" / "plugins"
@@ -6656,6 +6667,23 @@ def host_install(
                 err=True,
             )
 
+    # Detect the legacy ``_host/sponsio.yaml`` and suggest migration.
+    # Without this, the user installs ``_host_<name>`` thinking they
+    # have a single source of truth but the runtime still falls back
+    # to ``_host`` when the per-host yaml is missing — the dual-yaml
+    # confusion this whole migration story exists to retire.
+    legacy_host_yaml = plugin_root / "_host" / "sponsio.yaml"
+    if legacy_host_yaml.exists():
+        migratable = [t for t in targets if t in _LEGACY_HOST_NAME_TO_BUCKET]
+        if migratable:
+            click.secho(
+                "⚠  legacy `_host/sponsio.yaml` detected — runtime will "
+                "still fall back to it when per-host buckets are missing.\n"
+                f"   Consolidate with:  sponsio host migrate "
+                f"{' '.join(migratable)}",
+                fg="yellow",
+            )
+
     any_failed = False
     review_paths: list[Path] = []
     for name in targets:
@@ -6730,6 +6758,150 @@ def host_install(
 
     if any_failed:
         sys.exit(1)
+
+
+_LEGACY_HOST_NAME_TO_BUCKET: dict[str, str] = {
+    "claude-code": "_host_claude_code",
+    "cursor": "_host_cursor",
+}
+
+
+@host.command(name="migrate")
+@click.argument("names", nargs=-1, required=True)
+@click.option(
+    "--keep-legacy",
+    is_flag=True,
+    help=(
+        "Don't delete the legacy `_host/sponsio.yaml` after migrating.  "
+        "Default is to delete — having both files around is the source "
+        "of the dual-yaml confusion this command fixes."
+    ),
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help=(
+        "Overwrite an existing `_host_<name>/sponsio.yaml`.  Default "
+        "is to refuse if the per-host bucket is already populated, so "
+        "we don't silently clobber user customisations."
+    ),
+)
+def host_migrate(names: tuple[str, ...], keep_legacy: bool, force: bool):
+    """Migrate the legacy `_host` bucket to per-host buckets.
+
+    Until 0.1.x, ``sponsio plugin init`` wrote a single
+    ``~/.sponsio/plugins/_host/sponsio.yaml`` that gated every Claude
+    Code AND Cursor invocation.  Per-host routing
+    (``_host_claude_code/`` / ``_host_cursor/``) supersedes that.
+    Existing installs keep working through a runtime fallback, but
+    that fallback is the source of "I deleted _host_claude_code,
+    why is it still blocking?" — the legacy bucket silently kicks
+    in.
+
+    This command consolidates: it copies
+    ``~/.sponsio/plugins/_host/sponsio.yaml`` into one or more
+    ``~/.sponsio/plugins/_host_<name>/sponsio.yaml`` files (rewriting
+    the ``agents:`` key on the way), then deletes the legacy file.
+
+    Pass ``auto`` to migrate every host that ``sponsio host
+    list`` reports as installed.
+
+    \b
+    Examples:
+      sponsio host migrate claude-code
+      sponsio host migrate claude-code cursor
+      sponsio host migrate auto                 # every detected host
+    """
+    plugin_root_env = os.environ.get("SPONSIO_PLUGIN_ROOT")
+    plugin_root = (
+        Path(plugin_root_env).expanduser()
+        if plugin_root_env
+        else Path.home() / ".sponsio" / "plugins"
+    )
+    legacy_path = plugin_root / "_host" / "sponsio.yaml"
+
+    if not legacy_path.exists():
+        click.secho(
+            f"✘ legacy bucket not found at {legacy_path} — nothing to migrate.",
+            fg="yellow",
+            err=True,
+        )
+        sys.exit(1)
+
+    legacy_text = legacy_path.read_text(encoding="utf-8")
+
+    # Expand ``auto`` to every host with a per-host bucket OR a
+    # detected binary on PATH.
+    targets: list[str] = []
+    for token in names:
+        if token == "auto":
+            for host_name in _LEGACY_HOST_NAME_TO_BUCKET:
+                if shutil.which(host_name.split("-")[0]):
+                    targets.append(host_name)
+        else:
+            targets.append(token)
+    seen: set[str] = set()
+    targets = [t for t in targets if not (t in seen or seen.add(t))]
+
+    valid = [t for t in targets if t in _LEGACY_HOST_NAME_TO_BUCKET]
+    invalid = [t for t in targets if t not in _LEGACY_HOST_NAME_TO_BUCKET]
+    if invalid:
+        click.secho(
+            f"✘ unknown host(s): {', '.join(invalid)}.  "
+            f"Supported: {', '.join(_LEGACY_HOST_NAME_TO_BUCKET)}",
+            fg="red",
+            err=True,
+        )
+        sys.exit(1)
+    if not valid:
+        click.secho(
+            "✘ no hosts to migrate (auto found nothing).  "
+            "Specify host name(s) explicitly.",
+            fg="yellow",
+            err=True,
+        )
+        sys.exit(1)
+
+    written: list[Path] = []
+    for host_name in valid:
+        bucket = _LEGACY_HOST_NAME_TO_BUCKET[host_name]
+        target_path = plugin_root / bucket / "sponsio.yaml"
+        if target_path.exists() and not force:
+            click.secho(
+                f"✘ {target_path} already exists — pass --force to overwrite.",
+                fg="red",
+                err=True,
+            )
+            sys.exit(1)
+        # Rewrite the agents key on the way: the legacy file has
+        # ``agents: _host:`` (or ``_host_subagent:``); the per-host
+        # bucket needs ``agents: <bucket>:``.  Plain string replace
+        # is safe here — those exact lines have no other meaning in
+        # a contract yaml.
+        new_text = legacy_text.replace(
+            "agents:\n  _host:", f"agents:\n  {bucket}:"
+        ).replace("\n  _host:\n", f"\n  {bucket}:\n")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(new_text, encoding="utf-8")
+        written.append(target_path)
+        click.secho(f"✔  wrote {target_path}", fg="green")
+
+    if not keep_legacy:
+        legacy_path.unlink()
+        click.secho(f"✔  removed {legacy_path}", fg="green")
+    else:
+        click.secho(
+            f"⚠  kept {legacy_path} (--keep-legacy) — runtime will still "
+            "fall back to it for hosts without a per-host bucket",
+            fg="yellow",
+        )
+
+    click.echo()
+    click.secho("Next steps:", bold=True)
+    click.echo("  sponsio host status <name>      # confirm the migration")
+    click.echo(
+        "  sponsio doctor                  # verify everything wires up"
+    )
 
 
 @host.command(name="uninstall")

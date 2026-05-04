@@ -204,25 +204,53 @@ def library_path_for(plugin_id: str) -> Path:
     return library_root() / plugin_id / "sponsio.yaml"
 
 
+_LEGACY_FALLBACK_WARNED: set[str] = set()
+
+
+def _emit_legacy_fallback_warning(plugin_id: str, legacy: str) -> None:
+    """One-time stderr deprecation notice when a host call falls
+    through to the legacy ``_host`` bucket.
+
+    Visibility matters here because the historical bug class was
+    "user deletes ``_host_<name>/sponsio.yaml`` to disable rules,
+    runtime silently falls back to ``_host/`` and keeps enforcing".
+    Loud-once warning makes the dual-yaml situation impossible to
+    miss while still letting existing installs keep working.
+
+    De-duped per ``plugin_id`` per process — repeated tool calls in
+    one Claude Code session don't re-print.  The host hook
+    subprocess is a fresh process per invocation, so the warning
+    surfaces on each session start, which is the right cadence for
+    "you should migrate" guidance.
+    """
+    if plugin_id in _LEGACY_FALLBACK_WARNED:
+        return
+    _LEGACY_FALLBACK_WARNED.add(plugin_id)
+    import sys
+
+    sys.stderr.write(
+        f"[sponsio] using legacy `{legacy}` bucket for `{plugin_id}` "
+        f"— per-host yaml is missing.  Consolidate with:\n"
+        f"  sponsio host migrate {plugin_id.removeprefix('_host_').replace('_', '-')}\n"
+    )
+
+
 def _resolve_library(plugin_id: str) -> tuple[Path, str]:
     """Resolve ``(library_path, effective_agent_id)`` with legacy fallback.
 
-    Cursor and Claude Code now route to per-host buckets
+    Cursor and Claude Code route to per-host buckets
     (``_host_cursor`` / ``_host_claude_code``) so each IDE can carry
-    its own rules. Existing users still have a populated legacy
-    ``_host/sponsio.yaml`` from earlier installs — fall back to that
-    when the host-specific library doesn't exist yet, so no manual
-    migration is required for the runtime to keep enforcing.
+    its own rules.  When the per-host yaml is present, it
+    SUPERSEDES the legacy ``_host`` bucket — no merging, no
+    layering.  When it's missing, we fall back to the legacy
+    ``_host/sponsio.yaml`` AND emit a one-time deprecation
+    warning so the user knows where the rules are coming from.
 
-    Both the path and the agent id need to fall back together: the
-    legacy library declares ``agents: _host:`` (resp. ``_host_subagent``)
-    as its top-level key, so :class:`BaseGuard` must be invoked with
-    that same id or it cannot find the agent to evaluate against.
-    Trace bucketing keeps using the new per-host plugin_id (so
-    ``rate_limit`` stays per-IDE), but the contract evaluation
-    transparently borrows the legacy yaml.
+    The fallback exists only so existing installs keep enforcing
+    after a ``pip install -U`` that bumps to per-host routing —
+    new installs always go through ``sponsio host install <name>``,
+    which writes ``_host_<name>/`` directly.
 
-    The fallback only fires for the per-host main / sub-agent buckets.
     Per-MCP-server buckets (``github``, ``filesystem``, …) and the
     OpenClaw bucket return their primary path unchanged — they have
     no legacy counterpart to fall back to.
@@ -240,6 +268,7 @@ def _resolve_library(plugin_id: str) -> tuple[Path, str]:
     if legacy:
         legacy_path = library_path_for(legacy)
         if legacy_path.exists():
+            _emit_legacy_fallback_warning(plugin_id, legacy)
             return legacy_path, legacy
 
     return primary, plugin_id  # primary may not exist; caller short-circuits
