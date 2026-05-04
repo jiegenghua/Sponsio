@@ -28,6 +28,7 @@ import { spawnSync } from "child_process";
 import { dump } from "js-yaml";
 import fgImport from "fast-glob";
 import { scan } from "./index";
+import { style } from "./tokens";
 
 /* ----------------------------------------------------------------- */
 
@@ -668,22 +669,35 @@ export async function runOnboardCli(argv: string[]): Promise<void> {
     // Fallback path didn't go through ``sponsio scan``, so it
     // didn't print the summary itself — emit one here in the
     // same shape Python uses (``✓ <path>`` + col-6 sub-keys
-    // under the col-2 ✓ marker).
-    process.stdout.write(`  ✓ ${res.outPath}\n`);
+    // under the col-2 ✓ marker).  Colours mirror Python's
+    // ``click.secho(f"  ✓ {report.out_path}", fg="green")``.
+    process.stdout.write(`  ${style.success("✓")} ${res.outPath}\n`);
     process.stdout.write(`      tools:      ${res.toolCount}\n`);
     process.stdout.write(`      mode:       ${p.mode}\n`);
     process.stdout.write("      method:     det-only fallback yaml\n");
     process.stdout.write("\n");
   }
-  process.stdout.write("  Add this to your agent entry point:\n\n");
+  process.stdout.write(`  ${style.brand("Add this to your agent entry point:", true)}\n\n`);
   for (const line of res.wrapSnippet.split("\n")) {
-    process.stdout.write(`    ${line}\n`);
+    process.stdout.write(`    ${style.fg(line)}\n`);
   }
-  process.stdout.write("\n  Next:\n");
-  process.stdout.write(
-    "    npx sponsio doctor                    # env health\n" +
-      "    npx sponsio validate                  # parse check\n" +
-      "    npx sponsio report --since 24h        # what would have been blocked\n" +
-      "    npx sponsio mode enforce              # one-shot flip when ready\n",
-  );
+  process.stdout.write(`\n  ${style.brand("Next:", true)}\n`);
+  // Each next-step line: command in brand cyan, ``# comment`` in
+  // metadata grey — same split Python's ``cta_line`` / ``Next:``
+  // sections use.
+  const nextSteps: [string, string][] = [
+    ["npx sponsio doctor", "# env health"],
+    ["npx sponsio validate", "# parse check"],
+    ["npx sponsio report --since 24h", "# what would have been blocked"],
+    ["npx sponsio mode enforce", "# one-shot flip when ready"],
+  ];
+  for (const [cmd, comment] of nextSteps) {
+    // Pad commands to a fixed width so comments line up vertically —
+    // same approach as Python's hand-tuned column widths in cli.py's
+    // onboard recap.
+    const pad = " ".repeat(Math.max(1, 38 - cmd.length));
+    process.stdout.write(
+      `    ${style.brand(cmd)}${pad}${style.metadata(comment)}\n`,
+    );
+  }
 }
