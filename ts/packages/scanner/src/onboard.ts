@@ -633,19 +633,31 @@ export async function runOnboardCli(argv: string[]): Promise<void> {
     pyNever: p.pyNever,
   });
   process.stdout.write("\n");
-  process.stdout.write("· framework: " + detectFramework(res.root) + " (heuristic from package.json)\n");
-  process.stdout.write("· method:    " + res.method + (res.method === "python" ? " (sponsio scan)" : " (det-only fallback yaml)") + "\n");
-  process.stdout.write("· tools:     " + res.toolCount + "\n");
-  process.stdout.write("· wrote:     " + res.outPath + "\n");
-  process.stdout.write("\nAdd to your agent entry file:\n\n");
-  process.stdout.write(res.wrapSnippet + "\n");
+  // Match Python ``sponsio onboard``'s recap shape so the wizard
+  // → onboard transition reads as one program.  The bullet-list
+  // ``· framework: …`` block was redundant with the ``✓ wrote
+  // <path>`` summary that ``sponsio scan`` already printed when
+  // method === python; drop it and use Python's "Add this to
+  // your agent entry point:" / "Next:" framing for the rest.
+  if (res.method === "fallback") {
+    // Fallback path didn't go through ``sponsio scan``, so it
+    // didn't print the summary itself — emit one here in the
+    // same shape Python uses (``✓ <path>`` + col-2 keys).
+    process.stdout.write(`  ✓ ${res.outPath}\n`);
+    process.stdout.write(`      tools:      ${res.toolCount}\n`);
+    process.stdout.write(`      mode:       ${p.mode}\n`);
+    process.stdout.write("      method:     det-only fallback yaml\n");
+    process.stdout.write("\n");
+  }
+  process.stdout.write("Add this to your agent entry point:\n\n");
+  for (const line of res.wrapSnippet.split("\n")) {
+    process.stdout.write(`  ${line}\n`);
+  }
+  process.stdout.write("\nNext:\n");
   process.stdout.write(
-    "\nNext steps (TypeScript):\n" +
-      "  npx sponsio validate        # parse check + det/sto counts\n" +
-      "  npx sponsio doctor          # env health\n" +
-      "  # run your agent, then…\n" +
-      "  npx sponsio report --since 24h\n" +
-      "  # once false positives are pruned:\n" +
-      "  export SPONSIO_MODE=enforce\n",
+    "  npx sponsio doctor                    # env health\n" +
+      "  npx sponsio validate                  # parse check\n" +
+      "  npx sponsio report --since 24h        # what would have been blocked\n" +
+      "  npx sponsio mode enforce              # one-shot flip when ready\n",
   );
 }
