@@ -24,21 +24,33 @@ from sponsio.render.tokens import PALETTE, STATUS, SYMBOLS, service_color
 
 def header_banner(
     brand: str = "Sponsio",
-    tagline: str = "runtime contract enforcement",
+    tagline: str = "",
 ) -> Rule:
     """Top-of-output banner: ``━━━ ◒◓ Sponsio ━━━ tagline ━━━━━━━━━``.
 
     The ``◒◓`` brand mark matches the original ``print_banner`` glyph
     pair carried over from the pre-Rich terminal output.
+
+    When ``tagline`` is empty, the trailing ``━━━ tagline`` segment
+    is omitted entirely so the banner closes with the brand mark
+    plus a clean rule run — useful at the top of session views
+    where the contextual tagline doesn't add information beyond
+    the brand wordmark itself.
     """
-    title = Text.assemble(
+    parts: list[tuple[str, str]] = [
         ("━━━ ", PALETTE["rule"]),
         (f"{SYMBOLS['logo']} ", f"bold {PALETTE['brand']}"),
         (brand, f"bold {PALETTE['brand']}"),
-        (" ━━━ ", PALETTE["rule"]),
-        (tagline, PALETTE["fg"]),
-        (" ", ""),
-    )
+    ]
+    if tagline:
+        parts.extend(
+            [
+                (" ━━━ ", PALETTE["rule"]),
+                (tagline, PALETTE["fg"]),
+            ]
+        )
+    parts.append((" ", ""))
+    title = Text.assemble(*parts)
     return Rule(
         title=title,
         characters=SYMBOLS["rule_heavy"],

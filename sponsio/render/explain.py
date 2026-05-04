@@ -204,7 +204,11 @@ def render_explain(
     alias = short_contract_alias(getattr(contract, "desc", "") or "", index)
     desc = getattr(contract, "desc", None) or "(unnamed)"
 
-    # 1. Header banner.
+    # 1. Header banner.  Leading blank line so the banner doesn't
+    # land on the same row as the user's previous shell prompt —
+    # ``$ sponsio explain C1`` sat flush against the ``━━━ ◒◓
+    # Sponsio ━━━ explain C1 ━━━`` rule with no breathing room.
+    console.print()
     console.print(header_banner(tagline=f"explain {alias}"))
     console.print()
 

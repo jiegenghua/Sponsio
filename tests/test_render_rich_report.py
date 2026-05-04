@@ -98,7 +98,7 @@ def test_render_emits_all_six_zones_in_order():
     _, plain = _render_to_text(rep)
     # Zone markers — header rule, contracts section, verdict banner, CTA arrow.
     assert "Sponsio" in plain
-    assert "runtime contract enforcement" in plain
+    assert "◒◓" in plain  # brand mark — banner rendered
     assert "contracts with activity" in plain
     assert "VERDICT" in plain
     assert "BLOCKED" in plain
