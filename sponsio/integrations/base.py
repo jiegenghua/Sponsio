@@ -30,7 +30,7 @@ from sponsio.models.contract import Contract
 from sponsio.models.spans import AgentTurnSpan, render_tree
 from sponsio.models.system import System
 from sponsio.models.trace import Trace
-from sponsio.runtime.evaluators import StoEvaluator, StoResult
+from sponsio.protocols.sto import StoEvaluator, StoResult
 from sponsio.runtime.feedback import FeedbackGenerator
 from sponsio.runtime.monitor import RuntimeMonitor
 from sponsio.runtime.session_log import SessionLogger
@@ -293,6 +293,56 @@ class CheckResult:
 
 
 # ---------------------------------------------------------------------------
+# StoEvaluator discovery
+# ---------------------------------------------------------------------------
+
+
+def _discover_sto_evaluator() -> StoEvaluator | None:
+    """Auto-discover a registered ``StoEvaluator`` implementation.
+
+    Looks up the ``sponsio.evaluators`` entry-point group; the Cloud
+    package (``sponsio-cloud``) registers a ``default`` entry pointing
+    at ``CloudStoEvaluator`` so users get the LLM-judge pipeline
+    automatically when ``pip install sponsio[cloud]`` is present.
+
+    Returns ``None`` if no implementation is registered — caller
+    decides whether that's a hard error or fine (depends on whether
+    the config actually carries soft constraints).
+
+    Defensive: any exception during discovery (broken third-party
+    plugin, missing dependency, instantiation error) returns ``None``
+    and logs at debug. We don't want a flaky third-party plugin to
+    crash an OSS-only ``BaseGuard`` construction.
+    """
+    import importlib.metadata as _md
+    import logging as _logging
+
+    log = _logging.getLogger(__name__)
+    try:
+        eps = _md.entry_points(group="sponsio.evaluators")
+    except Exception as e:  # pragma: no cover — defensive
+        log.debug("sto evaluator discovery: entry_points lookup failed: %s", e)
+        return None
+
+    # Prefer the conventional ``default`` name; fall back to the first
+    # registered entry if present. Multiple entries are uncommon (one
+    # per installed Cloud-tier package) but if it happens we pick the
+    # alphabetically-first ``default``-named one for stability.
+    candidates = list(eps)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda ep: (ep.name != "default", ep.name))
+    for ep in candidates:
+        try:
+            cls = ep.load()
+            return cls()  # type: ignore[no-any-return]
+        except Exception as e:  # pragma: no cover — third-party defensive
+            log.debug("sto evaluator discovery: failed to load %r: %s", ep.name, e)
+            continue
+    return None
+
+
+# ---------------------------------------------------------------------------
 # BaseGuard
 # ---------------------------------------------------------------------------
 
@@ -436,10 +486,28 @@ class BaseGuard:
         for c in built_contracts:
             self._system._contracts.append(c)
 
-        # Auto-register sto constraints on the StoEvaluator
+        # Auto-register sto constraints on the StoEvaluator.
+        #
+        # OSS ships no StoEvaluator implementation — that's a Sponsio
+        # Cloud feature (``pip install sponsio[cloud]``). When a config
+        # carries soft constraints we resolve the evaluator in this
+        # order:
+        #   1. Explicit ``sto_evaluator=`` kwarg (caller passed one in)
+        #   2. Auto-discovery via the ``sponsio.evaluators`` entry-
+        #      point group (Cloud / third-party packages register
+        #      themselves at install time)
+        #   3. Hard error pointing at the Cloud install
         if soft_constraints:
             if sto_evaluator is None:
-                sto_evaluator = StoEvaluator()
+                sto_evaluator = _discover_sto_evaluator()
+            if sto_evaluator is None:
+                raise RuntimeError(
+                    "Soft (stochastic) constraints require a StoEvaluator "
+                    "implementation. The OSS engine ships none — install "
+                    "the Cloud package with `pip install sponsio[cloud]`, "
+                    "or pass an explicit `sto_evaluator=` matching the "
+                    "`sponsio.protocols.sto.StoEvaluator` Protocol."
+                )
             for sc in soft_constraints:
                 sto_evaluator.register(
                     prop_name=sc.desc,
