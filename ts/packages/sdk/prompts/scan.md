@@ -38,7 +38,7 @@ including `version`, `agents`, `tools`, and `contracts`.  If non-empty,
 produce **only** the new contract entries — the user (or you, via
 `Edit`) will splice them into the existing file.
 
-Each entry is a mapping with `desc:` (one line, human-readable) and a
+Each entry is a mapping with `desc:` (one line, human-readable) and an
 `G:` block holding either a `pattern:` reference (preferred) or a raw
 `ltl:`.
 
