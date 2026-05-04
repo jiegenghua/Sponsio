@@ -35,11 +35,7 @@ from sponsio.init_wizard import (
 
 class TestParsePicks:
     def test_native_ides_form_round_trips(self):
-        spec = (
-            "framework=langgraph;"
-            "ides=claude-code:full,cursor:skill;"
-            "mode=enforce"
-        )
+        spec = "framework=langgraph;ides=claude-code:full,cursor:skill;mode=enforce"
         p = parse_picks(spec)
         assert p.framework == "langgraph"
         assert p.ide_levels == {"claude-code": "full", "cursor": "skill"}
@@ -417,9 +413,7 @@ class TestCliApply:
 
         # Stub the demo offer's tty check to bypass the post-install
         # confirm prompt.
-        monkeypatch.setattr(
-            "sponsio.init_wizard.sys.stdin.isatty", lambda: False
-        )
+        monkeypatch.setattr("sponsio.init_wizard.sys.stdin.isatty", lambda: False)
 
         (tmp_path / "agent.py").write_text(
             "from langgraph.prebuilt import create_react_agent\n"
@@ -434,9 +428,7 @@ class TestCliApply:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert called == [
-            ["sponsio", "onboard", ".", "--mode", "observe", "--force"]
-        ]
+        assert called == [["sponsio", "onboard", ".", "--mode", "observe", "--force"]]
 
 
 class TestCliMutualExclusion:

@@ -284,9 +284,7 @@ class TestDetectFramework:
         hint = detect_framework(tmp_path)
         assert hint.framework == "langchain"
 
-    def test_package_json_quote_anchoring_avoids_false_positive(
-        self, tmp_path: Path
-    ):
+    def test_package_json_quote_anchoring_avoids_false_positive(self, tmp_path: Path):
         # The bare ``"ai"`` package name must not match a substring of
         # an unrelated key.  Use an unrelated package whose value
         # contains "ai" as a substring (e.g. ``"some-ai-thing"``).
@@ -297,9 +295,7 @@ class TestDetectFramework:
         hint = detect_framework(tmp_path)
         assert hint.framework == "none"
 
-    def test_monorepo_pad_files_do_not_starve_detection(
-        self, tmp_path: Path
-    ):
+    def test_monorepo_pad_files_do_not_starve_detection(self, tmp_path: Path):
         """250 unrelated .py files at the repo root must NOT cause the
         framework detector to miss the agent file in a deep subdir.
 
@@ -321,9 +317,7 @@ class TestDetectFramework:
             "from langchain_core.tools import tool\n"
         )
 
-        hint = detect_framework(
-            tmp_path, prioritize_files=[agent_file]
-        )
+        hint = detect_framework(tmp_path, prioritize_files=[agent_file])
         assert hint.framework == "langgraph"
         assert hint.factory == "sponsio.langgraph"
 
@@ -792,9 +786,7 @@ class TestEmitContextHealthAndPreExisting:
         # A malformed yaml shouldn't block the diagnostic JSON —
         # doctor/validate will flag the parse error elsewhere.
         project = _make_fixture_project(tmp_path)
-        (project / "sponsio.yaml").write_text(
-            "agents:\n  agent:\n    contracts: [oops"
-        )
+        (project / "sponsio.yaml").write_text("agents:\n  agent:\n    contracts: [oops")
         data = self._emit(project)
         assert data["pre_existing_contracts"] == []
         assert data["health"] == "ok"  # detection still runs

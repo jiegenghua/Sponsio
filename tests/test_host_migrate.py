@@ -148,9 +148,7 @@ class TestHostMigrate:
         legacy.write_text(_legacy_yaml_text())
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["host", "migrate", "claude-code", "cursor"]
-        )
+        result = runner.invoke(cli, ["host", "migrate", "claude-code", "cursor"])
         assert result.exit_code == 0, result.output
 
         # Both per-host buckets populated from the same legacy body.
@@ -189,18 +187,14 @@ class TestHostMigrate:
         per_host.write_text("# stale\n")
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["host", "migrate", "claude-code", "--force"]
-        )
+        result = runner.invoke(cli, ["host", "migrate", "claude-code", "--force"])
         assert result.exit_code == 0, result.output
         # Now contains the migrated content, not the stale stub.
         content = per_host.read_text()
         assert "_host_claude_code:" in content
         assert "Block sensitive paths" in content
 
-    def test_migrate_keep_legacy_preserves_old_file(
-        self, tmp_path: Path, monkeypatch
-    ):
+    def test_migrate_keep_legacy_preserves_old_file(self, tmp_path: Path, monkeypatch):
         # Escape hatch for users who want to retain the legacy file
         # for an audit / rollback window.
         monkeypatch.setenv("SPONSIO_PLUGIN_ROOT", str(tmp_path))
@@ -209,24 +203,18 @@ class TestHostMigrate:
         legacy.write_text(_legacy_yaml_text())
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["host", "migrate", "claude-code", "--keep-legacy"]
-        )
+        result = runner.invoke(cli, ["host", "migrate", "claude-code", "--keep-legacy"])
         assert result.exit_code == 0, result.output
         assert legacy.exists()
 
-    def test_migrate_errors_when_legacy_missing(
-        self, tmp_path: Path, monkeypatch
-    ):
+    def test_migrate_errors_when_legacy_missing(self, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("SPONSIO_PLUGIN_ROOT", str(tmp_path))
         runner = CliRunner()
         result = runner.invoke(cli, ["host", "migrate", "claude-code"])
         assert result.exit_code != 0
         assert "not found" in result.output
 
-    def test_migrate_rejects_unknown_host_name(
-        self, tmp_path: Path, monkeypatch
-    ):
+    def test_migrate_rejects_unknown_host_name(self, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("SPONSIO_PLUGIN_ROOT", str(tmp_path))
         legacy = tmp_path / "_host" / "sponsio.yaml"
         legacy.parent.mkdir(parents=True)
@@ -244,9 +232,7 @@ class TestHostMigrate:
 
 
 class TestInstallSurfaceWarnings:
-    def test_plugin_init_prints_deprecation_notice(
-        self, tmp_path: Path, monkeypatch
-    ):
+    def test_plugin_init_prints_deprecation_notice(self, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("SPONSIO_PLUGIN_ROOT", str(tmp_path))
         runner = CliRunner()
         # Default Click runner merges stdout+stderr into ``output``.

@@ -213,11 +213,7 @@ def parse_picks(spec: str) -> InitPicks:
 def format_picks(p: InitPicks) -> str:
     """Inverse of :func:`parse_picks` — round-trip stable."""
     ides_str = ",".join(f"{ide}:{level}" for ide, level in p.ide_levels.items())
-    return (
-        f"framework={p.framework};"
-        f"ides={ides_str};"
-        f"mode={p.mode}"
-    )
+    return f"framework={p.framework};ides={ides_str};mode={p.mode}"
 
 
 # ---------------------------------------------------------------------------
@@ -336,9 +332,7 @@ def plan_commands(
             # install for the new name; the shim handles the
             # legacy install case at runtime.
             if not scan_ts_already_installed:
-                cmds.append(
-                    ["npm", "install", "--save-dev", "@sponsio/sdk"]
-                )
+                cmds.append(["npm", "install", "--save-dev", "@sponsio/sdk"])
             # Older published versions of ``@sponsio/scan-ts``
             # (alpha.3 and below) didn't accept ``--mode`` on the
             # ``onboard`` subcommand — passing it errored with
@@ -352,15 +346,11 @@ def plan_commands(
             if picks.mode != "observe":
                 cmds.append(["npx", "sponsio", "mode", picks.mode])
         else:
-            cmds.append(
-                ["sponsio", "onboard", ".", "--mode", picks.mode, "--force"]
-            )
+            cmds.append(["sponsio", "onboard", ".", "--mode", picks.mode, "--force"])
 
     full_hosts = [h for h in picks.hosts if h in SUPPORTED_HOSTS]
     if full_hosts:
-        cmds.append(
-            ["sponsio", "host", "install", *full_hosts, "--mode", picks.mode]
-        )
+        cmds.append(["sponsio", "host", "install", *full_hosts, "--mode", picks.mode])
 
     # ``"skill"``-level IDEs need an explicit ``skill install`` because
     # they're NOT going through ``host install`` (no hooks wanted).
@@ -420,8 +410,7 @@ def apply_commands(
         if len(commands) > 1:
             click.echo()
             click.secho(
-                f"  [{i}/{len(commands)}] {cmd[0]} "
-                f"{cmd[1] if len(cmd) > 1 else ''}",
+                f"  [{i}/{len(commands)}] {cmd[0]} {cmd[1] if len(cmd) > 1 else ''}",
                 fg="cyan",
                 dim=True,
             )

@@ -3808,9 +3808,8 @@ def init(
     # "installed" lets users on the old name finish ``sponsio
     # init`` without an extra install round-trip.
     _scan_ts_installed = (
-        (target_dir / "node_modules" / "@sponsio" / "sdk").exists()
-        or (target_dir / "node_modules" / "@sponsio" / "scan-ts").exists()
-    )
+        target_dir / "node_modules" / "@sponsio" / "sdk"
+    ).exists() or (target_dir / "node_modules" / "@sponsio" / "scan-ts").exists()
 
     # ---- non-TTY paths: --plan / --apply ----
     if plan_spec is not None:
@@ -4180,9 +4179,7 @@ def onboard(
     # ``━`` string.  Skipped on the non-interactive structured-
     # output paths (--json, --emit-context) so consumers parsing
     # stdout don't have to sed past it.
-    if not as_json and not emit_context and not os.environ.get(
-        "SPONSIO_INIT_DISPATCH"
-    ):
+    if not as_json and not emit_context and not os.environ.get("SPONSIO_INIT_DISPATCH"):
         # Standalone ``sponsio onboard`` prints a full banner so users
         # see the product wordmark when running it directly.  When the
         # ``sponsio init`` wizard dispatched us, the preview block
@@ -4230,9 +4227,7 @@ def onboard(
             _progress_console = _make_console_for_progress(None)
             _progress_console.print()
             _progress_console.print(
-                _indent_for_progress(
-                    _section_rule_for_progress(msg.removeprefix("▸ "))
-                )
+                _indent_for_progress(_section_rule_for_progress(msg.removeprefix("▸ ")))
             )
             return
         # Bullets indent col-2 to match the section rule above them
@@ -6973,9 +6968,7 @@ def host_migrate(names: tuple[str, ...], keep_legacy: bool, force: bool):
     click.echo()
     click.secho("Next steps:", bold=True)
     click.echo("  sponsio host status <name>      # confirm the migration")
-    click.echo(
-        "  sponsio doctor                  # verify everything wires up"
-    )
+    click.echo("  sponsio doctor                  # verify everything wires up")
 
 
 @host.command(name="uninstall")
