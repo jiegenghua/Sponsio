@@ -4141,18 +4141,21 @@ def onboard(
     from sponsio.onboard import OnboardReport, run_onboard
     from sponsio.runtime.spinner import Spinner
 
-    # Branded header — same `━━━ ◒◓ sponsio ━━━` shape the runtime
-    # contract banner uses (sponsio/runtime/terminal.py), so users
-    # see the product wordmark from the moment onboard starts.
-    # Skipped on the non-interactive structured-output paths (--json,
-    # --emit-context) so consumers parsing stdout don't have to sed
-    # past it.
+    # Branded header — same ``header_banner`` Rich primitive that
+    # ``sponsio init`` / ``sponsio doctor`` / runtime print_banner /
+    # explain renderers use, so onboarding's first line of output
+    # looks like the rest of the CLI instead of a hand-glued
+    # ``━`` string.  Skipped on the non-interactive structured-
+    # output paths (--json, --emit-context) so consumers parsing
+    # stdout don't have to sed past it.
     if not as_json and not emit_context:
-        click.secho(
-            "\n  ━━━ ◒◓ sponsio onboard " + "━" * 28,
-            dim=True,
-            err=True,
-        )
+        from rich.console import Console as _Console
+
+        from sponsio.render.components import header_banner as _header_banner
+
+        _hdr_console = _Console(file=sys.stderr, soft_wrap=True)
+        _hdr_console.print()
+        _hdr_console.print(_header_banner(tagline="onboard"))
 
     # One spinner per command — long-wait emits (``…``-suffixed) start
     # it, the next emit (or the final ``stop()`` after run_onboard)

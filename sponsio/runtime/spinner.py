@@ -84,7 +84,22 @@ class Spinner:
         Calling :meth:`start` twice without an intervening :meth:`stop`
         is a no-op — we don't try to swap labels mid-spin since that
         usually indicates a missing stop call upstream.
+
+        Strips a trailing ``…`` (the CLI's spinner-trigger sentinel)
+        so the braille glyph alone carries the in-progress signal.
+        Two indicators on the same line ("⠋ Running … …") read as
+        cramped; one is enough.
         """
+        # The trailing Unicode ellipsis is the convention upstream
+        # uses to flag "long-running, start a spinner".  Now that
+        # we're spinning, strip it so the braille frame carries the
+        # progress signal alone.  Keep any whitespace the caller had
+        # before the ellipsis intentional — that's deliberate spacing
+        # we shouldn't collapse.
+        label = label.rstrip()
+        if label.endswith("…"):
+            label = label[:-1].rstrip()
+
         if not self.stderr_is_tty():
             print(label, file=sys.stderr, flush=True)
             return

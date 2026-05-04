@@ -73,6 +73,32 @@ class TestSpinner:
             spin.stop()
         assert first_thread is second_thread, "second start spawned a new thread"
 
+    def test_trailing_ellipsis_stripped_from_label(self):
+        # The CLI's progress sink uses a trailing ``…`` as the
+        # spinner-trigger sentinel.  Once we're spinning, the
+        # rotating braille glyph carries the in-progress signal —
+        # leaving the ``…`` in the label too produced cramped
+        # double-indication ("⠋ Running … …") that users flagged.
+        buf = io.StringIO()  # non-tty path prints the label once
+        with patch.object(sys, "stderr", buf):
+            spin = Spinner()
+            spin.start("· Running LLM inference …")
+            spin.stop()
+        out = buf.getvalue()
+        assert "Running LLM inference" in out
+        assert "…" not in out
+
+    def test_label_without_ellipsis_unchanged(self):
+        # Defensive: a caller that didn't follow the ``…`` convention
+        # shouldn't have its label silently mutated.
+        buf = io.StringIO()
+        with patch.object(sys, "stderr", buf):
+            spin = Spinner()
+            spin.start("· Running LLM inference")
+            spin.stop()
+        out = buf.getvalue()
+        assert "Running LLM inference" in out
+
     def test_stop_clears_line_when_no_final_message(self):
         # stop(None) just clears the spinner line — the caller then
         # prints whatever should follow.  Useful when the next emit is
