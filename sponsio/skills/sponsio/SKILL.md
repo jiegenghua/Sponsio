@@ -819,7 +819,7 @@ Then hand-apply the integration snippet for your framework from the "Integration
 
 ## YAML schema (what contracts look like)
 
-Every contract is an `(assumption, enforcement)` pair. Both short keys (`A` / `E`) and long keys (`assumption` / `enforcement`) are accepted; mixing both forms of the same field in one entry raises `ConfigError`.
+Every contract is an `(assumption, guarantee)` pair. Both short keys (`A` / `G`) and long keys (`assumption` / `guarantee`) are accepted; mixing both forms of the same field in one entry raises `ConfigError`.  (Older Sponsio yamls used `E` / `enforcement`; the loader no longer accepts those, so re-emit any contracts on disk with the new keys.)
 
 ```yaml
 version: "1"
@@ -849,9 +849,10 @@ agents:
       - A: "called `modify_order`"
         G: "must call `get_order_details` before `modify_order`"
       # Omit A for unconditional
-      - E: "tool `send_email` is rate-limited to 5 per session"
+      - G: "tool `send_email` is rate-limited to 5 per session"
       # Structured dict (what scan emits for det patterns)
-      - E:
+      - desc: must_precede check_policy → issue_refund
+        G:
           pattern: must_precede
           args: [check_policy, issue_refund]
           source: scan
@@ -865,7 +866,7 @@ judge:                               # Sponsio Cloud only — required when any 
   model: gpt-4o-mini
 ```
 
-Both `A` and `E` accept: scalar NL string, list (AND), or structured dict `{pattern, args, source?}`.
+Both `A` and `G` accept: scalar NL string, list (AND), or structured dict `{pattern, args, source?}`.
 
 Placeholders rewritten at include-time: `<workspace>/` (from agent's `workspace:`), `<agent>` (from agent id).
 

@@ -1794,14 +1794,15 @@ class CodeAnalyzer:
             lines.append("    #")
             lines.append("    # Unconditional invariant (no precondition):")
             lines.append('    # - G: "tool `check_policy` must precede `issue_refund`"')
-            lines.append("    # - E:")
+            lines.append("    # - desc: must_precede check_policy → issue_refund")
+            lines.append("    #   G:")
             lines.append("    #     pattern: must_precede")
             lines.append("    #     args: [check_policy, issue_refund]")
             lines.append("    #")
             lines.append("    # Conditional rule (only enforced when A holds):")
             lines.append('    # - A: "called `modify_order`"')
             lines.append(
-                '    #   E: "tool `get_order_details` must precede `modify_order`"'
+                '    #   G: "tool `get_order_details` must precede `modify_order`"'
             )
         else:
             lines.append("    contracts:")
@@ -1887,7 +1888,7 @@ class CodeAnalyzer:
                     a_emit = self._render_assumption_yaml(p)
                     # Entry start.  When we have a desc, that's the
                     # top-level field; A / E are siblings.  When we
-                    # don't, fall back to the original "- A:" / "- E:"
+                    # don't, fall back to the original "- A:" / "- G:"
                     # short forms so non-LTL contracts stay terse.
                     inner_indent = "        "  # 8 spaces — body of "- " entry
                     if desc_text:
@@ -1900,7 +1901,7 @@ class CodeAnalyzer:
                             lines.append(f"{inner_indent}{a_emit['head']}")
                             for sub in a_emit.get("rest", []):
                                 lines.append(sub)
-                        lines.append(f"{inner_indent}E:")
+                        lines.append(f"{inner_indent}G:")
                         head_indent = "          "
                     elif a_emit:
                         lines.append(f"      - {a_emit['head']}{confidence_tag}")
@@ -1939,13 +1940,13 @@ class CodeAnalyzer:
                 elif p.sto:
                     if not p.nl_description:
                         # Sto proposal without an NL description would
-                        # round-trip as ``- E: ""``, which the loader
-                        # rejects (``enforcement: None``).  Drop instead.
+                        # round-trip as ``- G: ""``, which the loader
+                        # rejects (``guarantee: None``).  Drop instead.
                         continue
                     a_text = self._render_assumption(p)
                     if a_text:
                         lines.append(f'      - A: "{a_text}"{confidence_tag}')
-                        lines.append(f'        E: "{p.nl_description}"')
+                        lines.append(f'        G: "{p.nl_description}"')
                     else:
                         lines.append(f'      - G: "{p.nl_description}"{confidence_tag}')
 

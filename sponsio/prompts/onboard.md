@@ -112,14 +112,14 @@ agents:
   <agent_id>:
     contracts:
       - desc: "delete_snapshot must not touch /snapshots/prod/"
-        E:
+        G:
           pattern: arg_blacklist
           args: [delete_snapshot, path, ["^/snapshots/prod/"]]
           source: agent-extracted
         # rationale: policy.md L18 — "Production snapshots are
         # off-site DR backups and MUST NEVER be deleted"
       - desc: "delete_snapshot age_days within 30-day rotation"
-        E:
+        G:
           pattern: arg_value_range
           args: [delete_snapshot, age_days, 0, 30]
           source: agent-extracted
