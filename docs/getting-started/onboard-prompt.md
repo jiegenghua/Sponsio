@@ -39,7 +39,54 @@ accepting.
 If your environment can't drive an interactive TTY, gather the
 picks from the user in chat first, then dispatch:
   sponsio init --apply 'framework=<name>;ides=<ide>:<level>,...;mode=<m>'
-where <level> is one of ``none`` / ``skill`` / ``full``.
+
+The two scopes Sponsio operates at — pick any combination:
+
+  PROJECT scope (axis 1: framework wrap).  Wraps the LLM agent
+  the user is wiring Sponsio INTO — their LangGraph / Vercel-AI /
+  CrewAI / etc. program.  Writes ``<project>/sponsio.yaml`` and
+  splices ``wrap_snippet`` into the agent entry file.  Doesn't
+  touch any IDE.  Pick this alone (axis 2 = all-none) when you
+  just want to harden a specific agent the user runs at deploy
+  time — no IDE-side install needed.
+
+  IDE scope (axis 2: per-IDE level).  Decoupled from axis 1.
+  Lets the user gate THIS IDE's own tool calls AND/OR teach
+  develop agents the Sponsio playbook.  Independent of whether
+  the project also has its own LLM agent.
+
+Per-IDE level picks (axis 2):
+
+  none   — leave this IDE alone, no skill, no plugin.
+
+  skill  — knowledge layer only.
+
+           Drops the Sponsio Agent Skill (SKILL.md) into the IDE's
+           skill directory.  The next time a develop agent in this
+           IDE works on a project ("set up Sponsio in this repo",
+           "tune contracts based on policy.md", "explain why C1
+           fired"), it has the playbook.  Works across every
+           project the user opens in that IDE.
+
+           Doesn't gate any tool calls at runtime.
+
+  full   — knowledge layer + runtime gating.
+
+           Same skill drop as above, PLUS:
+             - Writes a PreToolUse hook into the IDE's settings
+               (e.g. ``~/.claude/settings.json``).
+             - Bootstraps a contract library at
+               ``~/.sponsio/plugins/_host_<ide>/sponsio.yaml``.
+
+           The hook routes every Bash / Edit / Write / MCP call
+           THIS IDE itself makes through Sponsio's guard,
+           enforcing the rules in that yaml.
+
+           So full is dual control:
+             - skill side teaches develop agents (any IDE with
+               the skill, any project).
+             - plugin side gates THIS IDE's own tool calls (this
+               machine, this IDE's runtime).
 
 ══════════════ Step 2 — propose contracts + wire entry file ══════════════
 
@@ -105,7 +152,54 @@ accepting.
 If your environment can't drive an interactive TTY, gather the
 picks from the user in chat first, then dispatch:
   npx sponsio init --apply 'framework=<name>;ides=<ide>:<level>,...;mode=<m>'
-where <level> is one of ``none`` / ``skill`` / ``full``.
+
+The two scopes Sponsio operates at — pick any combination:
+
+  PROJECT scope (axis 1: framework wrap).  Wraps the LLM agent
+  the user is wiring Sponsio INTO — their Vercel-AI / LangGraph /
+  Anthropic-SDK / etc. program.  Writes ``<project>/sponsio.yaml``
+  and splices ``wrap_snippet`` into the agent entry file.
+  Doesn't touch any IDE.  Pick this alone (axis 2 = all-none)
+  when you just want to harden a specific agent the user runs at
+  deploy time — no IDE-side install needed.
+
+  IDE scope (axis 2: per-IDE level).  Decoupled from axis 1.
+  Lets the user gate THIS IDE's own tool calls AND/OR teach
+  develop agents the Sponsio playbook.  Independent of whether
+  the project also has its own LLM agent.
+
+Per-IDE level picks (axis 2):
+
+  none   — leave this IDE alone, no skill, no plugin.
+
+  skill  — knowledge layer only.
+
+           Drops the Sponsio Agent Skill (SKILL.md) into the IDE's
+           skill directory.  The next time a develop agent in this
+           IDE works on a project ("set up Sponsio in this repo",
+           "tune contracts based on policy.md", "explain why C1
+           fired"), it has the playbook.  Works across every
+           project the user opens in that IDE.
+
+           Doesn't gate any tool calls at runtime.
+
+  full   — knowledge layer + runtime gating.
+
+           Same skill drop as above, PLUS:
+             - Writes a PreToolUse hook into the IDE's settings
+               (e.g. ``~/.claude/settings.json``).
+             - Bootstraps a contract library at
+               ``~/.sponsio/plugins/_host_<ide>/sponsio.yaml``.
+
+           The hook routes every Bash / Edit / Write / MCP call
+           THIS IDE itself makes through Sponsio's guard,
+           enforcing the rules in that yaml.
+
+           So full is dual control:
+             - skill side teaches develop agents (any IDE with
+               the skill, any project).
+             - plugin side gates THIS IDE's own tool calls (this
+               machine, this IDE's runtime).
 
 ══════════════ Step 2 — propose contracts + wire entry file ══════════════
 

@@ -609,11 +609,15 @@ def run_interactive(env: Environment) -> InitPicks:
     # "SKILL.md only, no enforcement".
     _step("Sponsio integration per IDE")
     click.echo(
-        "none   — leave this IDE alone\n"
-        "skill  — drop SKILL.md so the agent learns Sponsio "
-        "(no enforcement)\n"
-        "full   — host hooks + SKILL.md (the canonical 'protect "
-        "this IDE' pick)"
+        "none   — leave this IDE alone.\n"
+        "skill  — knowledge layer only.  Drops SKILL.md so this IDE\n"
+        "         (and any IDE that has the skill) knows how to drive\n"
+        "         Sponsio across any project.  No runtime gating.\n"
+        "full   — skill + host plugin.  The plugin ALSO gates THIS\n"
+        "         IDE's own Bash / Edit / Write / MCP calls against\n"
+        "         ``~/.sponsio/plugins/_host_<ide>/sponsio.yaml``.\n"
+        "         Dual control: teaches develop agents AND protects\n"
+        "         THIS IDE's tool calls."
     )
     click.echo()
     ide_levels: dict[str, str] = {}
