@@ -93,3 +93,17 @@ ts/examples/
 # answers as a project-wide default.
 .sponsiorc
 
+# Examples — only the 5 CLI-backed demo .py files + README/fmt + integrations/
+# + eval/ are kept in the remote tree.  Mock projects, onboard scenarios,
+# pocketos, sub_agent incidents, and scratch scan outputs stay local-only.
+examples/demo/mock_github_mcp/
+examples/demo/mock_notion_mcp/
+examples/demo/mock_lethal_trifecta/
+examples/demo/mock_lethal_trifecta_openclaw/
+examples/demo/mock_secret_bypass/
+examples/demo/pocketos/
+examples/demo/sub_agent_credential_leak/
+examples/demo/sub_agent_overreach/
+examples/demo/onboard/
+examples/scan/
+
