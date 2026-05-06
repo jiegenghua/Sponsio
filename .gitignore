@@ -88,3 +88,8 @@ sponsio-code-review.md
 # TS examples — local-only, contains scratch demos and sensitive sample data
 ts/examples/
 
+# Per-developer sponsio onboard config — framework / extractor / judge
+# choices vary per contributor; no point committing one maintainer's
+# answers as a project-wide default.
+.sponsiorc
+
