@@ -86,13 +86,13 @@ sponsio demo --scenario wire --no-guard   # same trajectory without contracts
 
 ## 3. Wire it into your own project
 
-One command — detects your agent framework, writes `sponsio.yaml` in observe mode, runs `sponsio doctor`, and prints the three lines to paste into your agent entry file:
+One interactive wizard — detects your agent framework, asks 3 questions (framework wrap · IDE host hooks · observe/enforce mode), writes `sponsio.yaml`, runs `sponsio doctor`, and prints the three lines to paste into your agent entry file:
 
 ```bash
-sponsio onboard .
+sponsio init .
 ```
 
-The `.` is the codebase to scan — any path works (`sponsio onboard src/`, `sponsio onboard /srv/agent`); it defaults to the current directory, so plain `sponsio onboard` is equivalent. `onboard` only reads; it writes a single `sponsio.yaml` into CWD.
+The `.` is the codebase to scan — any path works (`sponsio init src/`, `sponsio init /srv/agent`); it defaults to the current directory, so plain `sponsio init` is equivalent. `init` only reads your code; it writes a single `sponsio.yaml` into CWD and (for IDE hosts you opt into) installs hooks + skill into `~/.sponsio/`.
 
 Typical output:
 
@@ -125,21 +125,22 @@ What it does:
 - Writes `sponsio.yaml` with inferred contracts plus pre-built packs (`sponsio:core/runaway`, `sponsio:core/universal`, etc.)
 - Runs `sponsio doctor` and warns about anything unhealthy
 
-No LLM key? `onboard` still ships a name-heuristic starter plus `sponsio:core/runaway` (token budgets, delegation depth, loop caps) — all deterministic, zero LLM calls.
+No LLM key? `init` still ships a name-heuristic starter plus `sponsio:core/runaway` (token budgets, delegation depth, loop caps) — all deterministic, zero LLM calls.
 
-After `onboard` finishes it prints a framework-specific 2-3 line patch — paste it into your agent entry file at the marked spot (the snippet's inline comment shows where the wrap must run *before* the agent is built). All framework adapters are a one-line import swap — see [`docs/integrations/index.md`](docs/integrations/index.md).
+After `init` finishes it prints a framework-specific 2-3 line patch — paste it into your agent entry file at the marked spot (the snippet's inline comment shows where the wrap must run *before* the agent is built). All framework adapters are a one-line import swap — see [`docs/integrations/index.md`](docs/integrations/index.md).
 
 ### TypeScript (Node.js)
 
-If your agent is TypeScript, use the static scanner and the same `sponsio scan` / `sponsio.yaml` pipeline. Install the SDK, the `yaml` package (loaded when you use `Sponsio({ config: "sponsio.yaml" })`), and the scanner, then run `onboard` as a *subcommand* of the `sponsio-scan-ts` binary:
+If your agent is TypeScript, install the SDK — the `sponsio` CLI binary ships in `@sponsio/sdk` since v0.1.0 (the previous `@sponsio/scan-ts` package was merged in). The TS path runs the same `sponsio init` wizard:
 
 ```bash
-npm install @sponsio/sdk yaml
-npm install -D @sponsio/sdk
-npx sponsio onboard .
+npm install @sponsio/sdk
+npx sponsio init .
 ```
 
-When the Python [`sponsio` CLI](https://pypi.org/project/sponsio/) is on `PATH`, that command pipes the extracted tool JSON into `sponsio scan` and writes a full `sponsio.yaml` (same as the manual pipe in [`/scan-ts`’s README](ts/packages/sdk/README.md)). If `sponsio` is not installed, it still writes a small observe-mode file with a few det-only `E: …` natural-language rules so the TypeScript `Sponsio` class can start without Python. `sponsio onboard . --llm` passes `--llm` through to `sponsio scan` (set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` as in [`docs/reference/cli.md` → Provider matrix](docs/reference/cli.md#provider-matrix)).
+When the Python [`sponsio` CLI](https://pypi.org/project/sponsio/) is on `PATH`, the TS `init` pipes its extracted tool JSON into the Python `sponsio scan` and writes a full `sponsio.yaml` with packs auto-selected. If Python `sponsio` is not installed, the TS `init` still writes a small observe-mode file with a few det-only natural-language rules so the TypeScript `Sponsio` class can start without Python. `npx sponsio init . --llm` passes `--llm` through (set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` as in [`docs/reference/cli.md` → Provider matrix](docs/reference/cli.md#provider-matrix)).
+
+> Want an IDE agent (Claude Code / Cursor / Codex) to drive the install for you? Paste the language-matched prompt template from [`docs/getting-started/onboard-prompt.md`](docs/getting-started/onboard-prompt.md). The Python wizard covers the 4-axis flow (framework × per-IDE level × mode); the TS wizard covers a single-axis init today.
 
 ## 4. Run your agent and observe
 
@@ -223,8 +224,8 @@ Phrases above are how you write rules in `sponsio.yaml` — Sponsio compiles eac
 
 Four ways to author them, all feeding the same `sponsio.yaml`:
 
-- **Auto-inferred** — `sponsio onboard` reads your tool signatures
-- **Pattern library** — 29 patterns + starter bundles for Claude Code, OpenAI Agents SDK, CrewAI, MCP
+- **Auto-inferred** — `sponsio init` (interactive wizard) reads your tool signatures
+- **Pattern library** — 44 patterns + starter bundles for Claude Code, OpenAI Agents SDK, CrewAI, MCP
 - **Natural language** — `sponsio validate "..."` compiles plain English to LTL
 - **Policy doc** — `sponsio scan --policy security.md` parses existing compliance docs
 
@@ -262,12 +263,12 @@ sponsio scan src/ -t '~/.sponsio/sessions/bot/*.jsonl'      # + execution traces
 
 Scanned contracts are flagged `source: scan` (or `source: trace`) so they're easy to tell apart from hand-written ones.
 
-**What's in the generated `sponsio.yaml`** — `scan` and `onboard` pull pre-built packs for common agent capabilities, then add any inferred rules on top. Five packs ship today; `sponsio packs` lists them:
+**What's in the generated `sponsio.yaml`** — `scan` and `init` pull pre-built packs for common agent capabilities, then add any inferred rules on top. `sponsio packs` lists them; the most commonly auto-selected:
 
 
 | Pack                            | Rules    | Turns on when                                                                              |
 | ------------------------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `sponsio:core/universal`        | 5 sto    | LLM-judge safety net (injection / jailbreak / toxic / PII / harm). Needs a `judge:` block. |
+| `sponsio:core/universal`        | 5 sto (Cloud) | LLM-judge safety net (injection / jailbreak / toxic / PII / harm). Requires a configured judge: managed in [Sponsio Cloud](docs/reference/oss-scope.md), or BYO via the OSS `Judge` extension point. Without one, these log-and-skip on OSS. |
 | `sponsio:core/runaway`          | 5 det    | Always-safe. Token budgets, delegation depth, loop caps. No LLM calls.                     |
 | `sponsio:capability/shell`      | 11 det   | Any tool executing shell commands.                                                         |
 | `sponsio:capability/filesystem` | 13 det   | Any tool reading/writing files. Needs `workspace:`.                                        |

@@ -45,8 +45,10 @@ Apache 2.0. We will not relicense, gate, or remove them.
 
 ### CLI
 
-- `sponsio onboard`, `scan`, `validate`, `check`, `report`,
-  `refresh`, `eval`, `export`, `export-sessions`
+- `sponsio init` (interactive wizard — the user-facing entry),
+  plus the underlying `sponsio onboard`, `scan`, `validate`,
+  `check`, `report`, `refresh`, `eval`, `export`,
+  `export-sessions`
 - `sponsio host` group — install / status / list / trace / uninstall
   for the Cursor / Claude Code / OpenClaw plugins
 - `sponsio plugin` group — init / install / scan / prompt / guard

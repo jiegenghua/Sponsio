@@ -18,7 +18,7 @@ Then go to the [Quickstart](getting-started/quickstart.md).
 
 ## Sections
 
-- **[Getting started](getting-started/install.md)**: install, run your first guarded agent, write your first contract.
+- **[Getting started](getting-started/install.md)**: install, run your first guarded agent, write your first contract. Includes paste-ready [IDE-agent prompts](getting-started/onboard-prompt.md) for Claude Code / Cursor / Codex driven setup.
 - **[Concepts](concepts/overview.md)**: what contracts are, how the runtime evaluates them, the LTL backbone, OWASP coverage.
 - **[Integrations](integrations/index.md)**: drop-in adapters for LangGraph, Claude Agent, OpenAI Agents, CrewAI, Vercel AI, MCP, and others.
 - **[Guides](guides/onboarding.md)**: task-oriented walkthroughs. Tuning, observe-vs-enforce, contract sources, reporting, FAQ.

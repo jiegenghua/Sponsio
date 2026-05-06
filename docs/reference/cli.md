@@ -79,15 +79,12 @@ sponsio init [PATH]
 | `PATH` | Target directory (default: current). Writes `sponsio.yaml` if not present. |
 | `--plan PICKS` | Print the would-run commands for these picks. Used by IDE-agent wizards for dry-run previews. |
 | `--apply PICKS` | Run non-interactively. Picks format: `framework=<name>;hosts=<a>,<b>;skills=<a>,<b>;mode=observe\|enforce`. |
-| `--with-example` | Drop a pre-tuned `sponsio eval` scaffold (sponsio.yaml + 6 labelled traces) into PATH. Orthogonal to the wizard. |
-| `--force` | With `--with-example`, overwrite existing scaffold files. |
 | `--no-demo` | Skip the post-install demo offer. |
 
 ```bash
 sponsio init .                                              # interactive
 sponsio init . --apply "framework=langgraph;mode=observe"   # non-interactive
 sponsio init . --plan "framework=crewai"                    # dry-run preview
-sponsio init . --with-example                               # eval scaffold
 ```
 
 See [getting-started/quickstart.md](../getting-started/quickstart.md) for the typical interactive flow.

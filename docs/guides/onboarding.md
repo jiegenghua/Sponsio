@@ -97,18 +97,6 @@ Paste the snippet. Run your agent. Review the observe-mode report (`sponsio repo
 
 ---
 
-## Eval scaffold (`--with-example`)
-
-Orthogonal flag. Drops a pre-tuned `sponsio eval` scaffold (one `sponsio.yaml` + six labelled traces) into the target directory.
-
-```bash
-sponsio init . --with-example
-```
-
-Useful for smoke tests, demos, and evaluating a contract set before integrating into real code. `--with-example` is incompatible with `--plan`, `--apply`, and `--no-demo` (the wizard flow doesn't run on this path).
-
----
-
 ## When `init` is the wrong tool
 
 - **Greenfield project with no agent code yet.** Nothing to scan. Start from [First contract](../getting-started/first-contract.md) instead.

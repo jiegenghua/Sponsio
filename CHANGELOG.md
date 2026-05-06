@@ -27,7 +27,7 @@ and a CLI for scanning, mining, and reporting.
 
 - **Runtime engine** — LTL → DFA compiler, finite-trace evaluator,
   observe / enforce modes, session log writer, OTel exporter.
-- **Pattern library** — 29 deterministic patterns (`must_precede`,
+- **Pattern library** — 44 deterministic patterns (`must_precede`,
   `rate_limit`, `idempotent`, `arg_blacklist`, `arg_allowlist`,
   `no_data_leak`, `segregation_of_duty`, `cooldown`, `must_confirm`,
   `bounded_retry`, `loop_detection`, `scope_limit`,
@@ -39,7 +39,8 @@ and a CLI for scanning, mining, and reporting.
 - **Framework integrations** — LangGraph / LangChain.js, Claude Agent
   SDK, OpenAI SDK, OpenAI Agents SDK, Google ADK, Vercel AI SDK,
   CrewAI, MCP, plus a no-framework `guard_before` / `guard_after` API.
-- **CLI** — `sponsio onboard`, `scan`, `validate`, `check`, `report`,
+- **CLI** — `sponsio init` (interactive 4-axis wizard), plus the
+  underlying `sponsio onboard`, `scan`, `validate`, `check`, `report`,
   `refresh`, `eval`, `export`, `export-sessions`, `host`, `plugin`,
   `packs`, `patterns`, `prompt`, `mode`, `doctor`, `skill`, `replay`,
   `explain`, `demo`.
