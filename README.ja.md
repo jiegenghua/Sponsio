@@ -490,6 +490,16 @@ Sponsio はランタイム契約を強制するため、それ自身の正しさ
 
 ---
 
+## 謝辞
+
+Sponsio の脅威モデルは、セキュリティ研究コミュニティの公開研究を踏まえています:
+
+- **[Simon Willison "Lethal Trifecta"](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/)** —— プライベート データ + 信頼できないコンテンツ + 外部通信がエージェント リスクとしてどのように合成されるかという彼の整理が、私たちのマルチツール構成契約の設計を形づくっています([`mcp-composition.yaml`](sponsio/contracts/incident/mcp-composition.yaml) のコメントを参照)。
+
+防御すべき脅威モデルがありますか? [issue を作成してください](https://github.com/SponsioLabs/Sponsio/issues/new)。
+
+---
+
 ## コントリビューション
 
 パッチ、issue 報告、新パターン提案を歓迎します。[CONTRIBUTING.md](CONTRIBUTING.md) から始めてください。

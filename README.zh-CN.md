@@ -490,6 +490,16 @@ Sponsio 强制运行时合约，因此其自身的正确性至关重要。发现
 
 ---
 
+## 致谢
+
+Sponsio 的威胁建模吸收了安全研究社区的公开研究成果：
+
+- **[Simon Willison 的 "Lethal Trifecta"](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/)** —— 他对"私有数据 + 不可信内容 + 外部通信"如何叠加构成 agent 风险的论述，塑造了我们多工具组合合约的设计思路（具体引用见 [`mcp-composition.yaml`](sponsio/contracts/incident/mcp-composition.yaml) 中的注释）。
+
+有我们应当防御的威胁模型？欢迎[提 issue](https://github.com/SponsioLabs/Sponsio/issues/new)。
+
+---
+
 ## 贡献
 
 欢迎提交补丁、问题反馈与新模式提案。从 [CONTRIBUTING.md](CONTRIBUTING.md) 开始。

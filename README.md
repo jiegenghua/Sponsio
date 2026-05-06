@@ -490,6 +490,16 @@ Sponsio enforces runtime contracts, so its own correctness matters. Found someth
 
 ---
 
+## Prior art
+
+Sponsio's threat model draws on published research from the security community:
+
+- **[Simon Willison's "Lethal Trifecta"](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/)** — his framing of how private data + untrusted content + external comms combine into agent risk shapes our multi-tool composition contracts (see comments in [`mcp-composition.yaml`](sponsio/contracts/incident/mcp-composition.yaml)).
+
+Have a threat model we should defend against? [Open an issue](https://github.com/SponsioLabs/Sponsio/issues/new).
+
+---
+
 ## Contributing
 
 Patches, issue reports, and new pattern proposals are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
