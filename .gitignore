@@ -106,4 +106,5 @@ examples/demo/sub_agent_credential_leak/
 examples/demo/sub_agent_overreach/
 examples/demo/onboard/
 examples/scan/
+examples/eval/
 
