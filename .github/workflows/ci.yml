@@ -102,24 +102,33 @@ jobs:
 
       - name: Check README/QUICKSTART command sync
         run: |
-          # Canonical user-journey commands that must appear identically in
-          # both README.md (60-second version) and QUICKSTART.md (full
-          # walkthrough). Prevents CLI renames/drift from silently desyncing
-          # the two onboarding paths.
-          commands=(
+          # Canonical user-journey commands that must appear in user-facing
+          # docs. Prevents CLI renames/drift from silently desyncing the
+          # onboarding paths. README.md (the 60-second version) covers
+          # install + entry point; QUICKSTART.md (the full walkthrough)
+          # additionally covers report and the observe→enforce flip.
+          readme_required=(
             "pip install sponsio"
-            "sponsio onboard"
+            "sponsio init"
+          )
+          quickstart_required=(
+            "pip install sponsio"
+            "sponsio init"
             "sponsio report"
             "SPONSIO_MODE=enforce"
           )
           exit_code=0
-          for cmd in "${commands[@]}"; do
-            for file in README.md QUICKSTART.md; do
-              if ! grep -qF "$cmd" "$file"; then
-                echo "::error file=$file::Canonical command missing: $cmd"
-                exit_code=1
-              fi
-            done
+          for cmd in "${readme_required[@]}"; do
+            if ! grep -qF "$cmd" README.md; then
+              echo "::error file=README.md::Canonical command missing: $cmd"
+              exit_code=1
+            fi
+          done
+          for cmd in "${quickstart_required[@]}"; do
+            if ! grep -qF "$cmd" QUICKSTART.md; then
+              echo "::error file=QUICKSTART.md::Canonical command missing: $cmd"
+              exit_code=1
+            fi
           done
           exit $exit_code
 
@@ -128,22 +137,20 @@ jobs:
           # WYSIWYG markdown editors (Typora / Obsidian Live Preview / VS Code
           # Markdown Editor / Cursor rich preview) silently strip <details>
           # tags when they round-trip the file. Catch this before push.
-          # Expectation: 13 <details> blocks total —
-          #   4 in Quick start (One-shot prompt / Agent Skill / OpenClaw plugin / TypeScript)
-          #   9 in Integrations (one per supported framework)
-          expected=13
+          # Expectation: 9 <details> blocks total — one per supported
+          # framework in the Integrations section. Quick start uses open
+          # H3 headings + IDE-agent prompt badges instead of collapsibles
+          # so the install paths are visible at a glance.
+          expected=9
           opens=$(grep -c '^<details>' README.md || echo 0)
           closes=$(grep -c '^</details>' README.md || echo 0)
           if [ "$opens" -ne "$expected" ] || [ "$closes" -ne "$expected" ]; then
             echo "::error file=README.md::Expected ${expected} <details>/</details> pairs, found ${opens} open / ${closes} close. WYSIWYG markdown editor likely stripped them — re-add, or edit only in plain-text source mode."
             exit 1
           fi
-          # Sanity: required summary labels (one per collapsible)
+          # Sanity: required summary labels (one per collapsible — all in
+          # the Integrations section)
           required_summaries=(
-            "<summary><b>TypeScript</b></summary>"
-            "<summary><b>One-shot prompt</b>"
-            "<summary><b>Install as an Agent Skill</b></summary>"
-            "<summary><b>Install as an OpenClaw Plugin</b></summary>"
             "<summary><b>No framework</b>"
             "<summary><b>LangGraph / LangChain.js</b>"
             "<summary><b>Claude Agent SDK</b>"
