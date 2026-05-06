@@ -12,7 +12,44 @@ broke.
 
 ## [Unreleased]
 
-_Nothing yet._
+Open-source launch prep.  Closes the missing-implementation gap in 0.1.0a3
+(CLI imported `sponsio.daemon` / `sponsio.plugin.append_ops` but the wheel
+shipped without them) and tunes the bundled capability rules.  Version
+number for this batch is TBD.
+
+### Added
+
+- **`sponsio.daemon`** — Unix-socket IPC server + client + handlers; powers
+  the privileged-process side of `sponsio plugin append` so a system install
+  can give kernel-level (separate-UID) self-modify protection.
+- **`sponsio plugin append`** — structurally-additive merge from a staging
+  YAML into a host bucket library; the only blessed write path through the
+  self-modify pack.
+
+### Changed
+
+- **Capability/shell pack** — drop session-wide `rate_limit(exec, 50)` and
+  `loop_detection(exec, 20)`. The 24-hour cross-session trace store turned
+  these into rolling caps that false-positived heavy interactive work; the
+  targeted `arg_blacklist` and confirm-gate rules already cover the real
+  attacks.
+- **Capability/self-modify pack** — extend protection to the upstream
+  `sponsio` package (contract bundles + engine `.py`) so an editable / `--user`
+  / venv install can't be used as an "edit the bundle to silence the rule"
+  bypass.  Maintainer workflow: override with `customized: {match: {source:
+  "library:tier1.self-modify"}, disabled: true}`.
+- **Onboard wizard** — drop redundant trailing "mode flip" hint (axis 3
+  already asks); language-aware bare-loop guard API hint
+  (`guardBefore`/`guardAfter` for TS, `guard_before`/`guard_after` for Python).
+
+### Fixed
+
+- `sponsio --version` was hardcoded to "0.2.0a0" in the Click
+  `version_option`; now reads `sponsio.__version__` so it tracks
+  `pyproject.toml` automatically.
+- 0.1.0a3 wheel was missing `sponsio/daemon/` and
+  `sponsio/plugin/append_ops.py`, causing `sponsio plugin append` and
+  `sponsio daemon …` to ImportError on a fresh `pip install`.
 
 ---
 
