@@ -108,3 +108,12 @@ examples/demo/onboard/
 examples/scan/
 examples/eval/
 
+# Larger app-flavoured Python integrations — keep the minimal
+# ``*_guard.py`` canonical wiring snippets in remote, but the
+# full-scenario "agent built with Sponsio" showcases (no external
+# refs, ~57 KB) are local-only.
+examples/integrations/python/all_patterns_showcase.py
+examples/integrations/python/devops_agent_langgraph.py
+examples/integrations/python/rag_assistant_openai.py
+examples/integrations/python/refund_agent_vanilla.py
+
