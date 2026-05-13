@@ -167,50 +167,12 @@ jobs:
           done
           exit $exit_code
 
-      - name: Check README collapsibles intact
-        run: |
-          # WYSIWYG markdown editors (Typora / Obsidian Live Preview / VS Code
-          # Markdown Editor / Cursor rich preview) silently strip <details>
-          # tags when they round-trip the file. Catch this before push.
-          # Expectation: 9 <details> blocks total — one per supported
-          # framework in the Integrations section. Quick start uses open
-          # H3 headings + IDE-agent prompt badges instead of collapsibles
-          # so the install paths are visible at a glance.
-          expected=9
-          opens=$(grep -c '^<details>' README.md || echo 0)
-          closes=$(grep -c '^</details>' README.md || echo 0)
-          if [ "$opens" -ne "$expected" ] || [ "$closes" -ne "$expected" ]; then
-            echo "::error file=README.md::Expected ${expected} <details>/</details> pairs, found ${opens} open / ${closes} close. WYSIWYG markdown editor likely stripped them — re-add, or edit only in plain-text source mode."
-            exit 1
-          fi
-          # Sanity: required summary labels (one per collapsible — all in
-          # the Integrations section)
-          required_summaries=(
-            "<summary><b>No framework</b>"
-            "<summary><b>LangGraph / LangChain.js</b>"
-            "<summary><b>Claude Agent SDK</b>"
-            "<summary><b>OpenAI SDK</b>"
-            "<summary><b>OpenAI Agents SDK</b>"
-            "<summary><b>Google ADK</b>"
-            "<summary><b>Vercel AI SDK</b>"
-            "<summary><b>CrewAI</b>"
-            "<summary><b>MCP</b>"
-          )
-          missing=0
-          for s in "${required_summaries[@]}"; do
-            if ! grep -qF "$s" README.md; then
-              echo "::error file=README.md::Required collapsible summary missing: $s"
-              missing=1
-            fi
-          done
-          [ "$missing" -eq 0 ]
-
       - name: Check README header assets intact
         run: |
-          # Same WYSIWYG-strip pattern that hits <details> also nukes:
+          # WYSIWYG markdown editors strip key README assets:
           #   - banner image markdown at top
-          #   - architecture diagram reference in SOTA section
-          #   - <p align="center"> wrappers around badges + Star CTA
+          #   - architecture diagram reference in "How Sponsio works"
+          #   - <p align="center"> wrappers around badges + paste-prompt buttons
           # Catch any of these going missing before push hits main.
           fail=0
 
@@ -222,15 +184,15 @@ jobs:
 
           # Architecture diagram reference (anywhere in README)
           if ! grep -qE 'assets/sponsio-architecture\.png' README.md; then
-            echo "::error file=README.md::Architecture diagram reference missing — 'assets/sponsio-architecture.png' was stripped. Re-add inside the SOTA section."
+            echo "::error file=README.md::Architecture diagram reference missing - 'assets/sponsio-architecture.png' was stripped. Re-add inside the 'How Sponsio works' section."
             fail=1
           fi
 
-          # Centered HTML wrappers (utility badges + social badges + Star CTA → 3 minimum)
+          # Centered HTML wrappers (utility badges + social badges + architecture diagram + paste-prompt buttons → 3 minimum)
           centered=$(grep -c '^<p align="center">' README.md || echo 0)
           min_centered=3
           if [ "$centered" -lt "$min_centered" ]; then
-            echo "::error file=README.md::Expected ≥${min_centered} <p align=\"center\"> blocks (utility badges + social badges + Star CTA), found ${centered}. WYSIWYG editor likely stripped them."
+            echo "::error file=README.md::Expected at least ${min_centered} <p align=\"center\"> blocks, found ${centered}. WYSIWYG editor likely stripped them."
             fail=1
           fi
 
