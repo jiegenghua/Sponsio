@@ -17,9 +17,10 @@ Anything not covered here (design decisions, invariants, gotchas) lives in [`CLA
   must end with a `Signed-off-by:` line. `git commit -s` adds it
   for you.
 - **Be kind.** See the [Code of Conduct](CODE_OF_CONDUCT.md).
-- **Trademarks.** Apache 2.0 covers the code. The Sponsio name and
-  logo are separate. See [BRAND.md](BRAND.md) for what you can do
-  without asking.
+- **Forks & brand.** Apache 2.0 covers the code. The Sponsio name
+  and logo are separate; you may fork freely if you rename, don't
+  reuse the logo as your project's brand, and don't imply Sponsio
+  Labs endorsement. Email hello@sponsio.dev with questions.
 - **Small PRs beat big PRs.** One concern per PR. If a change is
   unavoidably large, split it into a stack and link the commits.
 - **Tests are not optional** for any change that touches `sponsio/`

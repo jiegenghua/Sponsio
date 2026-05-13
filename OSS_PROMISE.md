@@ -150,8 +150,8 @@ HashiCorp). We've designed our boundary to avoid each failure mode.
   [CONTRIBUTING.md](CONTRIBUTING.md)). Your contributions land
   under Apache 2.0 and stay there.
 - **We will not block fork operations.** Apache 2.0 permits forks
-  and we welcome them — see [BRAND.md](BRAND.md) for the trademark
-  boundary (you can fork; you have to rename).
+  and we welcome them; you can fork, you just have to rename
+  (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 If we ever change any of the above, we will:
 
