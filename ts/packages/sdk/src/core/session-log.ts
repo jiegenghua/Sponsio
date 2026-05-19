@@ -62,7 +62,15 @@ const SAFE_AGENT_ID_RE = /[^A-Za-z0-9._:\-]/g;
 
 function sanitizeAgentId(agentId: string): string {
   if (!agentId) return "_unknown";
-  const cleaned = agentId.replace(SAFE_AGENT_ID_RE, "_").replace(/^[._]+|[._]+$/g, "");
+  // Two anchored replaces — each is linear time.  The original
+  // ``/^[._]+|[._]+$/g`` form combined two anchored alternatives in
+  // one regex, which CodeQL flags as polynomial-redos because of
+  // alternation-overlap analysis even though each branch is
+  // independently anchored.
+  const cleaned = agentId
+    .replace(SAFE_AGENT_ID_RE, "_")
+    .replace(/^[._]+/, "")
+    .replace(/[._]+$/, "");
   if (!cleaned || cleaned === "." || cleaned === "..") return "_unknown";
   return cleaned.slice(0, 128);
 }

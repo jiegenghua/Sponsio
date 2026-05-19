@@ -6409,7 +6409,16 @@ def _apply_install_mode_to_host_buckets(
         except OSError as e:
             out.append((path, f"could not read: {e}"))
             continue
-        if re.search(r"^defaults:\s*$\n(?:[ \t]+.*\n)*[ \t]+mode:", text, re.MULTILINE):
+        # ``(?!mode:)`` in the inner repetition removes the ambiguity
+        # with the trailing ``[ \t]+mode:`` — without it, an indented
+        # line starting with ``mode:`` could be matched by either group,
+        # giving quadratic backtracking on inputs with many indented
+        # lines (CodeQL py/redos warning).
+        if re.search(
+            r"^defaults:\s*$\n(?:[ \t]+(?!mode:)[^\n]*\n)*[ \t]+mode:",
+            text,
+            re.MULTILINE,
+        ):
             out.append((path, "mode already set, kept"))
             continue
         # Insert ``defaults:\n  mode: <mode>\n`` after the version line.

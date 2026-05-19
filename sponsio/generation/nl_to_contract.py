@@ -290,6 +290,14 @@ class NLContractGenerator:
 # Rule-based keyword matcher (fallback when no LLM is available)
 # ---------------------------------------------------------------------------
 
+# Input length caps — bound the worst case of any downstream regex on
+# user-provided NL.  Real contract descriptions are 1-2 sentences;
+# these limits are generous (~100 KB total / 10 KB per line) but cut
+# off pathological inputs that could trigger polynomial backtracking
+# in patterns like ``\s+(.+)`` or ``(\d+)\s*\w+``.
+_MAX_NL_INPUT_LEN = 100_000
+_MAX_NL_LINE_LEN = 10_000
+
 # Regex patterns for extracting action names from NL text
 _QUOTED_RE = re.compile(r'["\']([^"\']+)["\']')
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
@@ -1322,7 +1330,10 @@ def parse_dsl(expr: str) -> ParsedConstraint:
     """
     # Alias kept so the body below (which grew up around the old
     # `nl_line` parameter name) stays readable after the rename.
-    nl_line = expr
+    # Length-cap applied at the public entry so direct callers of
+    # ``parse_dsl`` / ``parse_nl_rule_based`` get the same ReDoS
+    # protection as the batch entry ``nl_to_contracts``.
+    nl_line = expr[:_MAX_NL_LINE_LEN]
     text = nl_line.strip()
     if not text:
         return ParsedConstraint(original_nl=nl_line, error="Empty input")
@@ -1790,7 +1801,16 @@ def nl_to_contracts(
     Returns:
         An NLParseResult containing parsed constraints and any errors.
     """
-    lines = [line.strip() for line in nl_text.strip().splitlines() if line.strip()]
+    # Cap input length to bound the worst case of any regex in the
+    # downstream rule-based parser (CodeQL polynomial-redos warnings on
+    # patterns like ``\s+(.+)`` and ``(\d+)\s*\w+``).  10 KB per line
+    # is well above any real constraint description.
+    nl_text = nl_text[:_MAX_NL_INPUT_LEN]
+    lines = [
+        line.strip()[:_MAX_NL_LINE_LEN]
+        for line in nl_text.strip().splitlines()
+        if line.strip()
+    ]
 
     if not lines:
         return NLParseResult()

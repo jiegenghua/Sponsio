@@ -120,7 +120,10 @@ export function parseScore(raw: string): number {
       /* fall through */
     }
   }
-  const m = trimmed.match(/([01](?:\.\d+)?|0?\.\d+)/);
+  // Anchored + non-overlapping alternatives: prevents the polynomial
+  // backtracking CodeQL flags when ``[01](?:\.\d+)?`` and ``0?\.\d+``
+  // could both match prefixes like ``0`` or ``0.5``.
+  const m = trimmed.match(/^([01](?:\.\d+)?|\.\d+)/);
   if (!m) {
     throw new Error(
       `unparseable score: ${JSON.stringify(trimmed.slice(0, 80))}`,
