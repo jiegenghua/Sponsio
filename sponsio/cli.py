@@ -6409,16 +6409,25 @@ def _apply_install_mode_to_host_buckets(
         except OSError as e:
             out.append((path, f"could not read: {e}"))
             continue
-        # ``(?!mode:)`` in the inner repetition removes the ambiguity
-        # with the trailing ``[ \t]+mode:`` — without it, an indented
-        # line starting with ``mode:`` could be matched by either group,
-        # giving quadratic backtracking on inputs with many indented
-        # lines (CodeQL py/redos warning).
-        if re.search(
-            r"^defaults:\s*$\n(?:[ \t]+(?!mode:)[^\n]*\n)*[ \t]+mode:",
-            text,
-            re.MULTILINE,
-        ):
+        # Line-walking check (ReDoS-free).  Originally a single regex
+        # ``^defaults:\s*$\n(?:[ \t]+.*\n)*[ \t]+mode:`` flagged by
+        # CodeQL py/redos for nested-quantifier backtracking on inputs
+        # with many ``\t\t\n`` lines; rewritten to explicit iteration
+        # so there is no regex engine to backtrack.
+        in_defaults = False
+        already_has_mode = False
+        for line in text.splitlines():
+            if not in_defaults:
+                if line.rstrip() == "defaults:":
+                    in_defaults = True
+                continue
+            # Within the defaults: block; indented lines belong to it.
+            if line and not line[0].isspace():
+                break  # block ended without mode:
+            if line.lstrip().startswith("mode:"):
+                already_has_mode = True
+                break
+        if already_has_mode:
             out.append((path, "mode already set, kept"))
             continue
         # Insert ``defaults:\n  mode: <mode>\n`` after the version line.

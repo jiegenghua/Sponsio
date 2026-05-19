@@ -94,8 +94,13 @@ export function sponsioMiddleware(guard: Sponsio) {
           // prefix and any "det constraint violated:" / "violated:" boilerplate
           // so the appended text is concise; full message stays in the session log.
           const msg = check.message ?? `${tc.toolName} blocked by Sponsio`;
+          // Bounded ``{0,64}`` instead of ``*`` so the engine can't
+          // explore unbounded ``[A-Z-]`` lengths backtracking when the
+          // trailing ``BLOCKED:`` literal doesn't match — flagged as
+          // js/polynomial-redos.  64 is comfortably above any real
+          // agent.tool prefix.
           const trimmed = msg
-            .replace(/^[A-Z-]*BLOCKED:\s*[^—]+—\s*/, "")
+            .replace(/^[A-Z-]{0,64}BLOCKED:\s*[^—]+—\s*/, "")
             .replace(/^(?:det\s+constraint\s+)?violated:\s*/i, "");
           const reason = trimmed.split("\n")[0];
           emitBanner(tc.toolName, reason, guard.agentId);
