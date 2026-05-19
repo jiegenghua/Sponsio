@@ -94,16 +94,20 @@ export function sponsioMiddleware(guard: Sponsio) {
           // prefix and any "det constraint violated:" / "violated:" boilerplate
           // so the appended text is concise; full message stays in the session log.
           const msg = check.message ?? `${tc.toolName} blocked by Sponsio`;
-          // Bounded ``{0,64}`` instead of ``*`` so the engine can't
-          // explore unbounded ``[A-Z-]`` lengths backtracking when the
-          // trailing ``BLOCKED:`` literal doesn't match — flagged as
-          // js/polynomial-redos.  64 is comfortably above any real
-          // agent.tool prefix.
-          let trimmed = msg.replace(/^[A-Z-]{0,64}BLOCKED:\s*[^—]+—\s*/, "");
-          // Strip "(det constraint )?violated:" via prefix check
-          // instead of regex — the ``\s+`` quantifiers in the
-          // original ``/^(?:det\s+constraint\s+)?violated:\s*/i``
-          // form were still flagged by CodeQL js/polynomial-redos.
+          // Strip prefix via indexOf rather than regex — every regex
+          // form that matched the pattern
+          // ``^[A-Z-]*BLOCKED:\s*[^—]+—\s*`` kept tripping CodeQL
+          // js/polynomial-redos (the ``\s*`` and ``[^—]+`` overlap on
+          // spaces).  indexOf is O(n) with no backtracking.
+          let trimmed = msg;
+          const blockedIdx = trimmed.indexOf("BLOCKED:");
+          if (blockedIdx >= 0 && blockedIdx <= 64) {
+            const dashIdx = trimmed.indexOf("—", blockedIdx + "BLOCKED:".length);
+            if (dashIdx >= 0) {
+              trimmed = trimmed.slice(dashIdx + "—".length).trimStart();
+            }
+          }
+          // Strip optional "(det constraint )?violated:" boilerplate.
           const head = trimmed.toLowerCase();
           if (head.startsWith("det constraint violated:")) {
             trimmed = trimmed.slice("det constraint violated:".length).trimStart();
